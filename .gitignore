@@ -1,0 +1,33 @@
+# ==== Cliente (Angular / Node) ====
+Cliente/node_modules/
+Cliente/dist/
+Cliente/.angular/
+Cliente/.angular-cache/
+Cliente/npm-debug.log*
+Cliente/yarn-error.log*
+Cliente/.env
+Cliente/.env.*
+
+# ==== Servidor (C) ====
+Servidor/build/
+Servidor/*.o
+Servidor/*.obj
+Servidor/*.out
+Servidor/*.exe
+Servidor/*.a
+Servidor/servidor
+Servidor/api
+Servidor/compile_commands.json
+Servidor/*.dSYM/
+
+# ==== General / SO / Editor ====
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/tasks.json
