@@ -39,3 +39,6 @@ Thumbs.db
 !.vscode/extensions.json
 !.vscode/launch.json
 !.vscode/tasks.json
+
+# ==== Archivos random ====
+UI.md

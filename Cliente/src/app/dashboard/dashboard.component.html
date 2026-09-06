@@ -1,0 +1,61 @@
+<div class="dashboard" [class.powered-off]="!powered">
+
+  <!-- Columna izquierda -->
+  <div class="left-column">
+
+    <!-- Fila superior: botón de modo + lecturas de sensores -->
+    <div class="status-row">
+      <button
+        type="button"
+        class="modo-btn"
+        [class.mode-auto]="mode === 'AUTO'"
+        [class.mode-manual]="mode === 'MANUAL'"
+        (click)="toggleMode()"
+        [attr.aria-label]="'Modo actual ' + mode">
+        {{ mode === 'AUTO' ? 'AUTO' : 'MAN' }}
+      </button>
+
+      @for (sensor of sensors; track sensor.id) {
+        <div class="sensor-box" [class.obstacle]="sensor.obstacle">
+          <span class="sensor-label">Sensor {{ sensor.id }}</span>
+          <span class="sensor-value">{{ sensor.distance }} cm</span>
+        </div>
+      }
+    </div>
+
+    <!-- Panel de audio -->
+    <app-audio-panel></app-audio-panel>
+
+    <!-- Mapa en tiempo real -->
+    <app-map-view></app-map-view>
+  </div>
+
+  <!-- Columna derecha -->
+  <div class="right-column">
+    <mat-card appearance="outlined" class="control-card">
+      <mat-card-content>
+        <mat-card-title>Joystick</mat-card-title>
+        <controll-movement-joystick
+          [disabled]="mode !== 'MANUAL'"
+          (joystickAngle)="onAngleChange($event)"
+          (joystickDirection)="onDirectionChange($event)">
+        </controll-movement-joystick>
+      </mat-card-content>
+    </mat-card>
+
+    <div class="velocity">
+      <span class="velocity-label">Velocidad</span>
+      <div class="velocity-slider">
+        <mat-slider
+          [min]="0"
+          [max]="1000"
+          [step]="1"
+          [discrete]="true"
+          [disabled]="mode !== 'MANUAL'">
+          <input matSliderThumb [value]="speed" (valueChange)="onSpeedChange($event)">
+        </mat-slider>
+      </div>
+      <span class="velocity-value">{{ speed }}</span>
+    </div>
+  </div>
+</div>
