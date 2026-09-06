@@ -20,6 +20,14 @@ Servidor/api
 Servidor/compile_commands.json
 Servidor/*.dSYM/
 
+# ==== CMake (build fuera de Servidor) ====
+/build/
+cmake-build-*/
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
+
 # ==== General / SO / Editor ====
 .DS_Store
 Thumbs.db

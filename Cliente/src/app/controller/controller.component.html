@@ -2,6 +2,21 @@
   <mat-card-content>
     <mat-card-title>Joystick Controller</mat-card-title>
 
+    <p>Servidor: {{ serverUrl }}</p>
+    <p>Estado: {{ connectionStatus }}</p>
+    @if (lastMessage) {
+      <p>Respuesta: {{ lastMessage }}</p>
+    }
+    <button mat-raised-button color="primary" (click)="connectToServer()">
+      Conectar
+    </button>
+    <button mat-button (click)="disconnectFromServer()">
+      Desconectar
+    </button>
+    <button mat-button [disabled]="connectionStatus !== 'conectado'" (click)="sendTestMessage()">
+      Probar echo
+    </button>
+
     <mat-slide-toggle
       (change)="onEnableChange($event)"
       [checked]="enable">

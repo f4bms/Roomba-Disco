@@ -1,5 +1,6 @@
-import { Component } from '@angular/core';
+import { Component, OnDestroy } from '@angular/core';
 import { JoystickComponent } from "./joystick/joystick.component";
+import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatSliderModule } from '@angular/material/slider';
 import { MatSlideToggle } from '@angular/material/slide-toggle';
@@ -9,6 +10,7 @@ import { FormsModule } from '@angular/forms';
   selector: 'component-controller',
   imports: [
     MatSlideToggle,
+    MatButtonModule,
     FormsModule,
     JoystickComponent,
     MatCardModule,
@@ -19,7 +21,12 @@ import { FormsModule } from '@angular/forms';
 })
 
 
-export class ControllerComponent {
+export class ControllerComponent implements OnDestroy {
+
+  serverUrl = 'ws://localhost:8080';
+  connectionStatus = 'desconectado';
+  lastMessage = '';
+  private socket: WebSocket | null = null;
 
   angle: number | null = null;
   direction: string | null = null;
@@ -35,6 +42,54 @@ export class ControllerComponent {
   step = 1;
   thumbLabel = true;
   value = 0;
+
+  connectToServer() {
+    this.disconnectFromServer();
+    this.connectionStatus = 'conectando';
+    this.lastMessage = '';
+    const socket = new WebSocket(this.serverUrl);
+    this.socket = socket;
+
+    socket.onopen = () => {
+      if (this.socket === socket) {
+        this.connectionStatus = 'conectado';
+      }
+    };
+    socket.onmessage = (event: MessageEvent) => {
+      if (this.socket === socket) {
+        this.lastMessage = event.data;
+      }
+    };
+    socket.onerror = () => {
+      if (this.socket === socket) {
+        this.connectionStatus = 'error';
+      }
+    };
+    socket.onclose = () => {
+      if (this.socket === socket) {
+        this.connectionStatus = 'desconectado';
+        this.socket = null;
+      }
+    };
+  }
+
+  disconnectFromServer() {
+    if (this.socket !== null) {
+      this.socket.close();
+      this.socket = null;
+    }
+    this.connectionStatus = 'desconectado';
+  }
+
+  sendTestMessage() {
+    if (this.socket?.readyState === WebSocket.OPEN) {
+      this.socket.send('prueba desde Angular');
+    }
+  }
+
+  ngOnDestroy() {
+    this.disconnectFromServer();
+  }
 
 
 
