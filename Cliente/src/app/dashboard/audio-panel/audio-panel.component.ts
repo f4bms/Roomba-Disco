@@ -1,10 +1,9 @@
-import { Component } from '@angular/core';
+import { Component, inject } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
 import { MatSliderModule } from '@angular/material/slider';
-
-type AudioStatus = 'playing' | 'paused' | 'stopped';
+import { RobotSocketService } from '../../services/robot-socket.service';
 
 @Component({
   selector: 'app-audio-panel',
@@ -19,34 +18,36 @@ type AudioStatus = 'playing' | 'paused' | 'stopped';
 })
 export class AudioPanelComponent {
 
-  tracks: string[] = ['Pista 1', 'Pista 2', 'Pista 3', 'Pista 4'];
-  currentTrack = 0;
-  status: AudioStatus = 'stopped';
+  private readonly socket = inject(RobotSocketService);
+
+  // Lista real y estado de reproduccion llegaran en AUDIO:STATUS desde Logica.
+  tracks: string[] = [];
+  currentTrack: number | null = null;
+
+  // Estado local para pruebas: refleja el ultimo comando enviado.
+  playing = false;
   volume = 50;
 
   togglePlay() {
-    this.status = this.status === 'playing' ? 'paused' : 'playing';
+    this.playing = !this.playing;
+    this.socket.send(this.playing ? 'AUDIO:PLAY' : 'AUDIO:PAUSE');
   }
 
   stop() {
-    this.status = 'stopped';
+    this.playing = false;
+    this.socket.send('AUDIO:STOP');
   }
 
   prev() {
-    if (this.tracks.length === 0) {
-      return;
-    }
-    this.currentTrack = (this.currentTrack - 1 + this.tracks.length) % this.tracks.length;
+    this.socket.send('AUDIO:PREV');
   }
 
   next() {
-    if (this.tracks.length === 0) {
-      return;
-    }
-    this.currentTrack = (this.currentTrack + 1) % this.tracks.length;
+    this.socket.send('AUDIO:NEXT');
   }
 
   onVolumeChange(value: number) {
     this.volume = value;
+    this.socket.send(`AUDIO:VOL:${value}`);
   }
 }

@@ -6,6 +6,15 @@
   flex-wrap: wrap;
 }
 
+.connection-bar {
+  flex: 1 1 100%;
+  padding: 6px 12px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.06);
+  font-size: 13px;
+  font-weight: 600;
+}
+
 .dashboard.powered-off {
   opacity: 0.4;
   filter: grayscale(1);

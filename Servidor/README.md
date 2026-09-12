@@ -1,6 +1,6 @@
-# Servidor WebSocket minimo
+# Servidor web y WebSocket
 
-Servidor de prueba para el cliente Angular. No requiere CivetWeb ni bibliotecas externas: usa sockets POSIX y la biblioteca estandar de C.
+El servidor C usa CivetWeb vendorizado para entregar el cliente Angular compilado y el canal WebSocket desde el mismo proceso. No accede al Driver ni al hardware: su rol es transportar datos entre el Cliente y la futura capa Lógica.
 
 ## Compilar con CMake
 
@@ -11,7 +11,7 @@ cmake -S Servidor -B Servidor/build
 cmake --build Servidor/build
 ```
 
-El ejecutable se genera en `Servidor/build/servidor`.
+El build compila el cliente Angular y genera el ejecutable en `Servidor/build/servidor`.
 
 Tambien se conserva un `Makefile` como atajo compatible para entornos que ya lo utilicen:
 
@@ -19,27 +19,36 @@ Tambien se conserva un `Makefile` como atajo compatible para entornos que ya lo 
 make -C Servidor
 ```
 
-## Ejecutar
+## Ejecutar en desarrollo
 
 ```bash
-./Servidor/build/servidor
+./Servidor/build/servidor 8080 "$PWD/Cliente/dist/scrap-e-controller/browser"
 ```
 
-El puerto predeterminado es `8080`. Se puede cambiar como primer argumento:
+Abre `http://localhost:8080` en el navegador. El canal WebSocket se expone en `ws://localhost:8080/ws`.
+
+## Instalar en la Raspberry Pi
 
 ```bash
-./Servidor/build/servidor 9000
+cmake --install Servidor/build --prefix /opt/roomba-disco
+/opt/roomba-disco/bin/servidor
 ```
 
-Cuando un navegador establece correctamente el handshake WebSocket, la consola muestra:
+La instalacion incluye el ejecutable y los assets del cliente en `share/roomba-disco/www`. El binario los localiza automaticamente. Desde otro equipo de la misma red, abre:
 
 ```text
-cliente conectado
+http://IP_DE_LA_RASPBERRY:8080
 ```
 
-El servidor tambien muestra `cliente desconectado`, responde a `ping` con `pong` y devuelve al cliente los mensajes de texto recibidos.
+El cliente usara en el siguiente paso el mismo origen para conectarse por WebSocket en:
 
-Para probarlo desde la consola del navegador mientras el cliente Angular esta abierto:
+```text
+ws://IP_DE_LA_RASPBERRY:8080/ws
+```
+
+## Estado actual del canal
+
+Cuando un cliente abre el WebSocket, la consola muestra `cliente conectado`. Por ahora el servidor registra y devuelve mediante echo los mensajes de texto recibidos. El reenvio entre Servidor y Lógica mediante IPC, asi como el estado de sensores, LEDs, modo, mapa y audio, se implementan en pasos posteriores.
 
 ```js
 const socket = new WebSocket('ws://localhost:8080');

@@ -1,4 +1,7 @@
-<div class="dashboard" [class.powered-off]="!powered">
+<div class="dashboard">
+
+  <!-- Estado de conexion con el servidor (temporal para pruebas) -->
+  <div class="connection-bar">Servidor: {{ connectionStatus() }}</div>
 
   <!-- Columna izquierda -->
   <div class="left-column">
@@ -12,13 +15,13 @@
         [class.mode-manual]="mode === 'MANUAL'"
         (click)="toggleMode()"
         [attr.aria-label]="'Modo actual ' + mode">
-        {{ mode === 'AUTO' ? 'AUTO' : 'MAN' }}
+        {{ mode }}
       </button>
 
       @for (sensor of sensors; track sensor.id) {
         <div class="sensor-box" [class.obstacle]="sensor.obstacle">
           <span class="sensor-label">Sensor {{ sensor.id }}</span>
-          <span class="sensor-value">{{ sensor.distance }} cm</span>
+          <span class="sensor-value">{{ sensor.distance === null ? '---' : sensor.distance + ' cm' }}</span>
         </div>
       }
     </div>
@@ -37,7 +40,6 @@
         <mat-card-title>Joystick</mat-card-title>
         <controll-movement-joystick
           [disabled]="mode !== 'MANUAL'"
-          (joystickAngle)="onAngleChange($event)"
           (joystickDirection)="onDirectionChange($event)">
         </controll-movement-joystick>
       </mat-card-content>

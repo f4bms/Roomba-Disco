@@ -28,6 +28,13 @@ CMakeFiles/
 cmake_install.cmake
 CTestTestfile.cmake
 
+# ==== Artefactos de compilacion e instalacion ====
+Servidor/third_party/**/build/
+Servidor/third_party/**/*.o
+Servidor/third_party/**/*.a
+install/
+/dist/
+
 # ==== General / SO / Editor ====
 .DS_Store
 Thumbs.db
@@ -42,3 +49,4 @@ Thumbs.db
 
 # ==== Archivos random ====
 UI.md
+spec.md

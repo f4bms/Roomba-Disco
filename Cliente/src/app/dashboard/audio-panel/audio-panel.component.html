@@ -9,6 +9,8 @@
           <div class="playlist-item" [class.active]="i === currentTrack" role="listitem">
             {{ track }}
           </div>
+        } @empty {
+          <div class="playlist-item">Lista no disponible</div>
         }
       </div>
 
@@ -18,7 +20,7 @@
             <mat-icon>skip_previous</mat-icon>
           </button>
           <button mat-icon-button aria-label="Reproducir o pausar" (click)="togglePlay()">
-            <mat-icon>{{ status === 'playing' ? 'pause' : 'play_arrow' }}</mat-icon>
+            <mat-icon>{{ playing ? 'pause' : 'play_arrow' }}</mat-icon>
           </button>
           <button mat-icon-button aria-label="Detener" (click)="stop()">
             <mat-icon>stop</mat-icon>
