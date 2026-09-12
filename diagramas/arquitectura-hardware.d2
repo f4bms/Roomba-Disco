@@ -1,0 +1,94 @@
+# Regenerar: d2 arquitectura-hardware.d2 arquitectura-hardware.svg
+
+direction: down
+
+titulo: "Arquitectura de hardware — Robot Aspiradora Autónomo" {
+  near: top-center
+  shape: text
+  style.font-size: 28
+  style.bold: true
+}
+
+energia: "SUBSISTEMA DE ENERGÍA" {
+  style.fill: "#edf6ed"
+  direction: right
+
+  cargador: "Cargador de celdas 18650\n(carga individual, fuera de línea)" {
+    style.fill: "#f4f4f4"
+    style.stroke-dash: 3
+  }
+  celdas: "Pack batería 18650\n3S1P · 11,1–12,6 V"
+  bms: "BMS 3S balanceada"
+  nodo_bat: "Riel de batería\n11,1–12,6 V" {
+    shape: hexagon
+  }
+  buck: "Convertidor DC-DC\n12 V → 5 V"
+  nodo_5v: "Riel lógico\n5 V" {
+    shape: hexagon
+  }
+
+  cargador -> celdas: "recarga" {
+    style.stroke-dash: 3
+  }
+  celdas -> bms
+  bms -> nodo_bat
+  nodo_bat -> buck
+  buck -> nodo_5v
+}
+
+logico: "DOMINIO LÓGICO   ·   tierra GND_L" {
+  style.fill: "#edf1fb"
+
+  pi: "Raspberry Pi 4"
+  sensores: "Sensores de proximidad ≥ 2\n(frontal + lateral)\nPor definir: ultrasónico o infrarrojo" {
+    style.stroke-dash: 3
+  }
+  leds: "LEDs de estado ×4\nautónomo · manual · alerta · encendido"
+  audio: "Salida de audio + parlante\nPor definir: analógica o I2S" {
+    style.stroke-dash: 3
+  }
+  odo: "Odometría de motores\nPor definir: encoders o estimación" {
+    style.stroke-dash: 3
+  }
+
+  sensores -> pi: "GPIO" {
+    style.stroke-dash: 3
+  }
+  pi -> leds: "GPIO"
+  pi -> audio {
+    style.stroke-dash: 3
+  }
+  odo -> pi {
+    style.stroke-dash: 3
+  }
+}
+
+aislamiento: "BARRERA DE AISLAMIENTO GALVÁNICO" {
+  style.fill: "#fdf2e5"
+
+  opto: "Optoacopladores\n6 canales (IN1–IN4, ENA, ENB)"
+  nota: "GND_L y GND_P separadas;\núnico cruce = el optoacoplador" {
+    shape: text
+    style.italic: true
+  }
+}
+
+potencia: "DOMINIO DE POTENCIA   ·   tierra GND_P" {
+  style.fill: "#fbedef"
+  direction: right
+
+  l298n: "Driver puente H (L298N)\nPWM en ENA/ENB"
+  motor_izq: "Motor DC izquierdo"
+  motor_der: "Motor DC derecho"
+
+  l298n -> motor_izq: "OUT1/OUT2"
+  l298n -> motor_der: "OUT3/OUT4"
+}
+
+energia.nodo_5v -> logico.pi: "5 V"
+energia.nodo_5v -> aislamiento.opto: "5 V"
+energia.nodo_5v -> potencia.l298n: "5 V lógico"
+energia.nodo_bat -> potencia.l298n: "12 V"
+
+logico.pi -> aislamiento.opto: "PWM + dirección"
+aislamiento.opto -> potencia.l298n: "IN1–IN4, ENA, ENB"

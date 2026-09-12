@@ -39,7 +39,64 @@ El sistema está estructurado bajo un modelo en 4 niveles:
 ```
 
 ### 📟 Arquitectura de Hardware
-`[PENDIENTE - Esquema eléctrico del puente H, sensores HC-SR04/IR y distribución de rieles de potencia, entre otros]`
+
+![Diagrama de arquitectura de hardware](diagramas/arquitectura-hardware.svg)
+
+> Fuente del diagrama: [`diagramas/arquitectura-hardware.d2`](diagramas/arquitectura-hardware.d2)
+> ([D2](https://d2lang.com/)). Regenerar con:
+> `d2 diagramas/arquitectura-hardware.d2 diagramas/arquitectura-hardware.svg`.
+
+El sistema se divide en cuatro dominios:
+
+- **Subsistema de energía.** Pack de baterías 18650 en 3S1P (11,1–12,6 V) con BMS 3S
+  balanceada. De ahí salen dos rieles regulados por separado: el riel de batería
+  (11,1–12,6 V) alimenta la etapa de potencia y un convertidor DC-DC deriva el riel
+  lógico de 5 V. Las celdas se cargan de forma individual, fuera de línea.
+- **Dominio lógico** (tierra `GND_L`). Raspberry Pi 4 con imagen mínima construida con
+  Yocto; expone el acceso a hardware mediante la biblioteca de control. Cuelgan de ella
+  los sensores de proximidad (≥ 2, frontal y lateral), los 4 LEDs de estado, la salida
+  de audio y la odometría de los motores.
+- **Barrera de aislamiento galvánico.** Optoacopladores en las 6 líneas de control del
+  driver (`IN1`–`IN4`, `ENA`, `ENB`). Las tierras `GND_L` y `GND_P` se mantienen
+  separadas y su único punto de cruce es el optoacoplador.
+- **Dominio de potencia** (tierra `GND_P`). Driver de puente H (L298N) con control de
+  velocidad por PWM en `ENA`/`ENB`, y los dos motores DC de la tracción diferencial.
+
+#### Mapa de pines GPIO (Raspberry Pi 4)
+El PWM de los motores se asignó a `GPIO12`/`GPIO13` (PWM0) en vez de `GPIO18`/`GPIO19`
+(PWM1) para dejar esas líneas libres, por si la salida de audio termina siendo un DAC
+por I2S en lugar de jack analógico.
+
+| Función | Pin BCM | Pin físico | Dirección | Periférico | Nota |
+|---|---|---|---|---|---|
+| ENA (vel. motor izq.) | GPIO12 | 32 | out | PWM0 (hw) | por optoacoplador |
+| ENB (vel. motor der.) | GPIO13 | 33 | out | PWM0 (hw) | por optoacoplador |
+| IN1 (dir. motor izq. A) | GPIO5 | 29 | out | GPIO | por optoacoplador |
+| IN2 (dir. motor izq. B) | GPIO6 | 31 | out | GPIO | por optoacoplador |
+| IN3 (dir. motor der. A) | GPIO16 | 36 | out | GPIO | por optoacoplador |
+| IN4 (dir. motor der. B) | GPIO17 | 11 | out | GPIO | por optoacoplador |
+| LED autónomo | GPIO22 | 15 | out | GPIO | directo (con resistencia) |
+| LED manual | GPIO23 | 16 | out | GPIO | directo |
+| LED alerta obstáculo | GPIO24 | 18 | out | GPIO | directo |
+| LED encendido | GPIO25 | 22 | out | GPIO | directo |
+| Sensores (frontal/lateral) | por definir | — | in | GPIO / I2C | depende de la tecnología de sensor elegida |
+| Audio | por definir | 18-21 reservados | — | I2S / jack | el jack analógico no usa pines del header |
+
+`GPIO2`/`GPIO3` (I2C), `GPIO14`/`GPIO15` (UART) y `GPIO7`-`GPIO11` (SPI) se dejan libres
+por si algún sensor o la consola de depuración los necesitan.
+
+La salida del optoacoplador es open-collector e invierte la señal recibida; la
+compensación se hace en la biblioteca de control, no en la asignación de pines.
+
+#### Decisiones de hardware pendientes
+
+Las cajas y flechas punteadas del diagrama marcan puntos aún sin cerrar:
+
+| Elemento | Pendiente |
+|---|---|
+| Sensores de proximidad | Tecnología: ultrasónico (HC-SR04) o infrarrojo |
+| Salida de audio | Ruta: analógica (jack + amplificador) o DAC I2S |
+| Odometría | Método: encoders en las ruedas o estimación por tiempo/PWM |
 
 ---
 
