@@ -1,0 +1,21 @@
+
+
+<mat-grid-list [cols]="(isHandset$ | async) ? 1 : 2" style="margin: 15px;">
+  <mat-grid-tile>
+    <mode-card
+      titulo="Loop"
+      descripcion="The robot will follow an infinity-shaped trajectory.">
+    </mode-card>
+  </mat-grid-tile>
+  <mat-grid-tile>
+    <mode-card
+      titulo="Find"
+      descripcion="The robot will search its surroundings to locate and approach the nearest wall.">
+    </mode-card></mat-grid-tile>
+  <mat-grid-tile>
+    <mode-card
+      titulo="Follow"
+      descripcion="The robot will search its surroundings to locate and follow the wall.">
+    </mode-card>
+  </mat-grid-tile>
+</mat-grid-list>

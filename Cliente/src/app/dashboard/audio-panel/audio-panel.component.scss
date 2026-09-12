@@ -1,0 +1,56 @@
+.audio-card {
+  width: 100%;
+}
+
+.audio-layout {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  align-items: stretch;
+}
+
+.playlist {
+  flex: 1 1 200px;
+  min-width: 160px;
+  max-height: 160px;
+  overflow-y: auto;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 8px;
+  padding: 4px;
+}
+
+.playlist-item {
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.playlist-item.active {
+  background: rgba(25, 118, 210, 0.12);
+  font-weight: 600;
+}
+
+.audio-controls {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 12px;
+  flex: 1 1 200px;
+}
+
+.transport {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.volume {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.volume-slider {
+  flex: 1 1 auto;
+}

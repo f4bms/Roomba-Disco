@@ -1,0 +1,20 @@
+<mat-card appearance="outlined" class="map-card">
+  <mat-card-content>
+    <mat-card-title>Mapa</mat-card-title>
+    <div class="map-grid" [style.grid-template-columns]="'repeat(' + width + ', 1fr)'">
+      @for (cell of cells; track $index) {
+        <div
+          class="map-cell"
+          [class.visited]="cell === 1"
+          [class.obstacle]="cell === 2"
+          [class.unknown]="cell === 0">
+        </div>
+      }
+    </div>
+    <div class="map-legend">
+      <span class="legend-item"><span class="swatch unknown"></span> Desconocida</span>
+      <span class="legend-item"><span class="swatch visited"></span> Visitada</span>
+      <span class="legend-item"><span class="swatch obstacle"></span> Obstáculo</span>
+    </div>
+  </mat-card-content>
+</mat-card>

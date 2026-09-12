@@ -1,0 +1,53 @@
+<mat-card appearance="outlined" style="margin: 15px; padding: 5px;">
+  <mat-card-content>
+    <mat-card-title>Joystick Controller</mat-card-title>
+
+    <p>Servidor: {{ serverUrl }}</p>
+    <p>Estado: {{ connectionStatus }}</p>
+    @if (lastMessage) {
+      <p>Respuesta: {{ lastMessage }}</p>
+    }
+    <button mat-raised-button color="primary" (click)="connectToServer()">
+      Conectar
+    </button>
+    <button mat-button (click)="disconnectFromServer()">
+      Desconectar
+    </button>
+    <button mat-button [disabled]="connectionStatus !== 'conectado'" (click)="sendTestMessage()">
+      Probar echo
+    </button>
+
+    <mat-slide-toggle
+      (change)="onEnableChange($event)"
+      [checked]="enable">
+      @if (enable) {
+        On
+      }
+      @else {
+        Off
+      }
+    </mat-slide-toggle>
+
+    <controll-movement-joystick
+      [disabled]="disabled"
+      (joystickAngle)="onAngleChange($event)"
+      (joystickDirection)="onDirectionChange($event)">
+    </controll-movement-joystick>
+
+    <div style="display: flex; justify-content: center;">
+      <mat-slider
+        style="width: 75%;"
+        [disabled]="disabled"
+        [max]="max"
+        [min]="min"
+        [step]="step"
+        [discrete]="thumbLabel"
+        [showTickMarks]="showTicks"
+        [displayWith]="formatLabel">
+        <input matSliderThumb
+            (valueChange)="onSliderChange($event)">
+      </mat-slider>
+    </div>
+  </mat-card-content>
+</mat-card>
+

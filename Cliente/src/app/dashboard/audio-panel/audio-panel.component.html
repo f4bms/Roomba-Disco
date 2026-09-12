@@ -1,0 +1,45 @@
+<mat-card appearance="outlined" class="audio-card">
+  <mat-card-content>
+    <mat-card-title>Audio</mat-card-title>
+
+    <div class="audio-layout">
+      <!-- Lista de reproducción (solo visualización) -->
+      <div class="playlist" role="list">
+        @for (track of tracks; track track; let i = $index) {
+          <div class="playlist-item" [class.active]="i === currentTrack" role="listitem">
+            {{ track }}
+          </div>
+        }
+      </div>
+
+      <div class="audio-controls">
+        <div class="transport">
+          <button mat-icon-button aria-label="Pista anterior" (click)="prev()">
+            <mat-icon>skip_previous</mat-icon>
+          </button>
+          <button mat-icon-button aria-label="Reproducir o pausar" (click)="togglePlay()">
+            <mat-icon>{{ status === 'playing' ? 'pause' : 'play_arrow' }}</mat-icon>
+          </button>
+          <button mat-icon-button aria-label="Detener" (click)="stop()">
+            <mat-icon>stop</mat-icon>
+          </button>
+          <button mat-icon-button aria-label="Pista siguiente" (click)="next()">
+            <mat-icon>skip_next</mat-icon>
+          </button>
+        </div>
+
+        <div class="volume">
+          <mat-icon>volume_up</mat-icon>
+          <mat-slider
+            class="volume-slider"
+            [min]="0"
+            [max]="100"
+            [step]="1"
+            [discrete]="true">
+            <input matSliderThumb [value]="volume" (valueChange)="onVolumeChange($event)">
+          </mat-slider>
+        </div>
+      </div>
+    </div>
+  </mat-card-content>
+</mat-card>
