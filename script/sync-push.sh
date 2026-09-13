@@ -18,8 +18,14 @@ if [ "$RAMA_ACTUAL" = "main" ] || [ "$RAMA_ACTUAL" = "$RAMA_BASE" ]; then
 fi
 
 if [ -n "$(git status --porcelain)" ]; then
-    echo "Hay cambios sin commitear. Commiteá o guardalos (git stash) antes de sincronizar."
-    exit 1
+    echo "Hay cambios sin commitear:"
+    git status --short
+    printf "¿Continuar de todas formas? [y/N] "
+    read -r RESPUESTA
+    case "$RESPUESTA" in
+        [yY]|[yY][eE][sS]) ;;
+        *) echo "Cancelado."; exit 1 ;;
+    esac
 fi
 
 echo "Pusheando $RAMA_ACTUAL a origin..."
