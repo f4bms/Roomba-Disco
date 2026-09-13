@@ -3,7 +3,7 @@
 # Orden: 1) push de la rama actual tal cual está (para no mezclar merges con
 # los commits propios antes de que queden en el remoto), 2) trae development
 # a la rama actual, 3) lleva la rama actual a development y pushea development.
-# Correr desde dentro del repo (workarea/Roomba-Disco), parado en la rama a pushear.
+# Correr desde la raíz del repo, parado en la rama a pushear.
 # Uso: ./sync-push.sh
 
 set -e
