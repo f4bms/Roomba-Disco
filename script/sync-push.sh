@@ -43,4 +43,4 @@ git merge "$RAMA_ACTUAL"
 git push -u origin "$RAMA_BASE"
 git checkout "$RAMA_ACTUAL"
 
-echo "$RAMA_ACTUAL pusheada. $RAMA_BASE actualizada en local."
+echo "$RAMA_ACTUAL pusheada. $RAMA_BASE actualizada."
