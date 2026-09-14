@@ -1,6 +1,6 @@
 # Servidor web y WebSocket
 
-El servidor C usa CivetWeb vendorizado para entregar el cliente Angular compilado y el canal WebSocket desde el mismo proceso. No accede al Driver ni al hardware: su rol es transportar datos entre el Cliente y la futura capa Lógica.
+El servidor C usa CivetWeb vendorizado para entregar el cliente Angular compilado y el canal WebSocket desde el mismo proceso. No accede al Driver ni al hardware: transporta documentos JSON entre el Cliente y la capa Logica por un socket Unix local.
 
 ## Compilar con CMake
 
@@ -22,7 +22,8 @@ make -C Servidor
 ## Ejecutar en desarrollo
 
 ```bash
-./Servidor/build/servidor 8080 "$PWD/Cliente/dist/scrap-e-controller/browser"
+./Servidor/build/logica_simulador Logica/estado.json /tmp/roomba-logica.sock
+./Servidor/build/servidor 8080 "$PWD/Cliente/dist/scrap-e-controller/browser" /tmp/roomba-logica.sock
 ```
 
 Abre `http://localhost:8080` en el navegador. El canal WebSocket se expone en `ws://localhost:8080/ws`.
@@ -40,7 +41,7 @@ La instalacion incluye el ejecutable y los assets del cliente en `share/roomba-d
 http://IP_DE_LA_RASPBERRY:8080
 ```
 
-El cliente usara en el siguiente paso el mismo origen para conectarse por WebSocket en:
+El cliente usa el mismo origen para conectarse por WebSocket en:
 
 ```text
 ws://IP_DE_LA_RASPBERRY:8080/ws
@@ -48,10 +49,16 @@ ws://IP_DE_LA_RASPBERRY:8080/ws
 
 ## Estado actual del canal
 
-Cuando un cliente abre el WebSocket, la consola muestra `cliente conectado`. Por ahora el servidor registra y devuelve mediante echo los mensajes de texto recibidos. El reenvio entre Servidor y Lógica mediante IPC, asi como el estado de sensores, LEDs, modo, mapa y audio, se implementan en pasos posteriores.
+Cuando un cliente abre el WebSocket, solicita el snapshot completo a Logica. Los cambios de controles se envian como `set_state`; Logica los valida, actualiza `Logica/estado.json` y devuelve un nuevo snapshot a todos los clientes conectados.
 
 ```js
-const socket = new WebSocket('ws://localhost:8080');
-socket.onopen = () => socket.send('prueba de conexion');
-socket.onmessage = event => console.log(event.data);
+const socket = new WebSocket('ws://localhost:8080/ws');
+socket.onopen = () => socket.send(JSON.stringify({ type: 'get_state' }));
+socket.onmessage = event => console.log(JSON.parse(event.data));
+```
+
+La prueba automatizada del recorrido WebSocket -> Servidor -> Logica -> archivo JSON -> WebSocket se ejecuta con:
+
+```bash
+python3 Servidor/test_integracion.py
 ```

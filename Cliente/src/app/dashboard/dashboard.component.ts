@@ -1,4 +1,4 @@
-import { Component, OnDestroy, OnInit, inject } from '@angular/core';
+import { Component, OnDestroy, OnInit, effect, inject } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatSliderModule } from '@angular/material/slider';
@@ -43,6 +43,23 @@ export class DashboardComponent implements OnInit, OnDestroy {
     { id: 2, distance: null, obstacle: null },
     { id: 3, distance: null, obstacle: null },
   ];
+  map = { width: 8, height: 6, cells: Array.from({ length: 48 }, () => 0) };
+
+  constructor() {
+    effect(() => {
+      const state = this.socket.state();
+      if (state === null) return;
+      this.powered = state.reported.power;
+      this.mode = state.reported.mode;
+      this.speed = state.desired.motion.speed;
+      this.sensors = state.reported.sensors.map(sensor => ({
+        id: sensor.id,
+        distance: sensor.distanceCm,
+        obstacle: sensor.obstacle,
+      }));
+      this.map = state.reported.map;
+    });
+  }
 
   ngOnInit() {
     this.socket.connect();
@@ -53,33 +70,33 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   toggleMode() {
-    this.mode = this.mode === 'MANUAL' ? 'AUTO' : 'MANUAL';
-    this.socket.send(`MODE:${this.mode}`);
+    const mode = this.mode === 'MANUAL' ? 'AUTO' : 'MANUAL';
+    this.socket.sendDesired({ mode });
   }
 
   onSpeedChange(value: number) {
-    this.speed = value;
+    this.socket.sendDesired({ motion: { speed: value } });
   }
 
   onDirectionChange(direction: string) {
     const command = this.directionToCommand(direction);
     if (command !== null) {
-      this.socket.send(command);
+      this.socket.sendDesired({ motion: { direction: command } });
     }
   }
 
   private directionToCommand(direction: string): string | null {
     switch (direction) {
       case 'up':
-        return `CMD:FWD:${this.speed}`;
+        return 'FWD';
       case 'down':
-        return `CMD:BACK:${this.speed}`;
+        return 'BACK';
       case 'left':
-        return 'CMD:TURN_L';
+        return 'TURN_L';
       case 'right':
-        return 'CMD:TURN_R';
+        return 'TURN_R';
       case 'standby':
-        return 'CMD:STOP';
+        return 'STOP';
       default:
         return null;
     }

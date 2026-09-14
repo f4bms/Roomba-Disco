@@ -1,0 +1,48 @@
+{
+	"type":	"state",
+	"protocolVersion":	1,
+	"revision":	339,
+	"desired":	{
+		"mode":	"MANUAL",
+		"motion":	{
+			"direction":	"STOP",
+			"speed":	249
+		},
+		"audio":	{
+			"action":	"PLAY",
+			"volume":	79
+		}
+	},
+	"reported":	{
+		"power":	true,
+		"mode":	"MANUAL",
+		"motion":	{
+			"direction":	"STOP",
+			"speed":	249
+		},
+		"audio":	{
+			"status":	"playing",
+			"volume":	79,
+			"track":	2,
+			"tracks":	["Pista 1", "Pista 2", "Pista 3"]
+		},
+		"sensors":	[{
+				"id":	1,
+				"distanceCm":	42.5,
+				"obstacle":	false
+			}, {
+				"id":	2,
+				"distanceCm":	18.2,
+				"obstacle":	true
+			}, {
+				"id":	3,
+				"distanceCm":	35,
+				"obstacle":	false
+			}],
+		"map":	{
+			"width":	8,
+			"height":	6,
+			"cells":	[0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 2, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+		}
+	}
+}

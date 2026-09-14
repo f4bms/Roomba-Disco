@@ -1,4 +1,4 @@
-import { Component, inject } from '@angular/core';
+import { Component, effect, inject } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
@@ -26,28 +26,38 @@ export class AudioPanelComponent {
 
   // Estado local para pruebas: refleja el ultimo comando enviado.
   playing = false;
+  powered = true;
   volume = 50;
 
+  constructor() {
+    effect(() => {
+      const state = this.socket.state();
+      if (state === null) return;
+      this.powered = state.reported.power;
+      this.playing = state.reported.audio.status === 'playing';
+      this.volume = state.reported.audio.volume;
+      this.currentTrack = state.reported.audio.track;
+      this.tracks = state.reported.audio.tracks;
+    });
+  }
+
   togglePlay() {
-    this.playing = !this.playing;
-    this.socket.send(this.playing ? 'AUDIO:PLAY' : 'AUDIO:PAUSE');
+    this.socket.sendDesired({ audio: { action: this.playing ? 'PAUSE' : 'PLAY' } });
   }
 
   stop() {
-    this.playing = false;
-    this.socket.send('AUDIO:STOP');
+    this.socket.sendDesired({ audio: { action: 'STOP' } });
   }
 
   prev() {
-    this.socket.send('AUDIO:PREV');
+    this.socket.sendDesired({ audio: { action: 'PREV' } });
   }
 
   next() {
-    this.socket.send('AUDIO:NEXT');
+    this.socket.sendDesired({ audio: { action: 'NEXT' } });
   }
 
   onVolumeChange(value: number) {
-    this.volume = value;
-    this.socket.send(`AUDIO:VOL:${value}`);
+    this.socket.sendDesired({ audio: { volume: value } });
   }
 }
