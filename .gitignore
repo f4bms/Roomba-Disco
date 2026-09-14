@@ -35,6 +35,19 @@ Servidor/third_party/**/*.a
 install/
 /dist/
 
+# ==== Biblioteca (C) ====
+Biblioteca/build/
+Biblioteca/*.so
+Biblioteca/*.o
+
+# ==== Yocto (BitBake / devtool) ====
+Yocto/build*/
+Yocto/downloads/
+Yocto/sstate-cache/
+Yocto/**/oe-workdir/
+Yocto/**/oe-logs/
+Yocto/**/qemu_test*
+
 # ==== General / SO / Editor ====
 .DS_Store
 Thumbs.db
@@ -50,3 +63,6 @@ Thumbs.db
 # ==== Archivos random ====
 UI.md
 spec.md
+
+# ==== Scratch temporal ====
+temp/
