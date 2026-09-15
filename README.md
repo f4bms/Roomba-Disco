@@ -328,3 +328,68 @@ Summary: There were 2 WARNING messages.
 ## 📋 8. Resultados más relevantes del Proyecto y Conclusiones
 
 `[PENDIENTE - Agregar más adelante]`
+
+---
+
+## 🎧 9. Probar el entorno en una compu nueva
+
+### Inicializar las cosas en la Compu para probar
+
+**Instalar el SDK de 64 bits en la compu**
+
+Abre una terminal, ir donde se descargó el instalador .sh y ejecutar con permisos de administrador:
+
+```bash
+chmod +x poky-glibc-x86_64-rpi-test-image-*.sh
+sudo ./poky-glibc-x86_64-rpi-test-image-*.sh
+```
+
+Cuando pregunte la ruta de instalación, darle Enter para aceptar la ruta por default (`/opt/poky/5.0.20/`).
+
+**Flashear el linux nuestro en la Rasp**
+
+- Poner la MicroSD en la PC.
+- Abrir programita de Raspberry Pi Imager.
+- Seleccionar el archivo comprimido `.wic.bz2` que está dentro del zip del drive (sacarlo del .zip antes), seleccionar la SD y presionar Flash.
+- Sacar la tarjeta, poner en la Rasp y conectar un cable de red hacia el router o configurar el Wi-Fi.
+
+**Conexión SSH**
+
+Cambiar `<IP_RASPBERRY>` por la IP asignada a la Rasp y conectarse:
+
+```bash
+ssh root@<IP_RASPBERRY>
+```
+
+Con eso debería poder entrar como admin a root sin contraseña.
+
+**Probar el .c de sonido con hilos de ejemplo**
+
+Cargar el entorno de cross-compile en los 64 bits que cambiamos:
+
+```bash
+source /opt/poky/5.0.20/environment-setup-cortexa72-poky-linux
+```
+
+Compilar el binario para la rasp:
+
+```bash
+$CC main_test.c -I./include -L. -lroombateca -lpthread -o el_test
+```
+
+Transferir el ejecutable y la biblioteca por red a la Rasp:
+
+```bash
+scp el_test libroombateca.so root@<IP_RASPBERRY>:/usr/lib/
+```
+
+En la terminal SSH de la Rasp, conectar audífonos o parlantes al Jack y correr el binario:
+
+```bash
+export LD_LIBRARY_PATH=/usr/lib
+el_test
+```
+
+Guía paso a paso (instalar el SDK, flashear la imagen en una Pi, y probar la biblioteca
+por SSH con audio real): ver el **Anexo** en
+[`Yocto/README.md`](Yocto/README.md#anexo--guía-rápida-para-probar-el-entorno-en-una-compu-nueva).
