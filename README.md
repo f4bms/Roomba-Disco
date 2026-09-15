@@ -26,7 +26,7 @@ El sistema está estructurado bajo un modelo en 4 niveles:
                                    ▼
 +-----------------------------------------------------------------------+
 
-|  CAPA 3: BIBLIOTECA DE ABSTRACCIÓN DE HARDWARE (libthgpio.so)         |
+|  CAPA 3: BIBLIOTECA DE ABSTRACCIÓN DE HARDWARE (libroombateca.so)     |
 |  - Funciones nativas de control y hilos concurrentes de audio (POSIX).|
 +-----------------------------------------------------------------------+
                                    │  (Llamadas al Sistema /sysfs)
@@ -215,11 +215,11 @@ bitbake rpi-test-image
 
 ---
 
-## 👨‍🍳 3. Estructura de la Receta Propia (`libthgpio_1.0.bb`)
+## 👨‍🍳 3. Estructura de la Receta Propia (`libroombateca_1.0.bb`)
 
 Receta modular en CMake y enlazada de forma externa al host.
 
-**Ubicación del archivo en la capa:** `meta-robot/recipes-apps/libthgpio/libthgpio_1.0.bb`
+**Ubicación del archivo en la capa:** `Yocto/meta-robot/recipes-apps/libroombateca/libroombateca_1.0.bb`
 
 ```text
 SUMMARY = "Biblioteca GPIO"
@@ -231,10 +231,10 @@ LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda
 inherit cmake externalsrc
 
 #Ruta local donde va a estar el codigo
-EXTERNALSRC = "/home/irmunoz/Taller4/cfiles/libthgpio"
+EXTERNALSRC = "/home/irmunoz/Taller4/cfiles/libroombateca"
 
 #Evita que Yocto busque parches en subcarpetas locales de metadatos
-EXTERNALSRC_BUILD = "/home/irmunoz/Taller4/poky-scarthgap-5.0.15/rpi4/tmp/work/raspberrypi4-poky-linux-gnueabi/libthgpio/1.0-r0/build"
+EXTERNALSRC_BUILD = "/home/irmunoz/Taller4/poky-scarthgap-5.0.15/rpi4/tmp/work/raspberrypi4-poky-linux-gnueabi/libroombateca/1.0-r0/build"
 
 #Indica a Yocto que empaque la biblioteca compartida (.so) y headers (.h)
 FILES:{PN} += "{libdir}/lib*.so"
@@ -313,7 +313,7 @@ Summary: There were 2 WARNING messages.
 ---
 
 ## 📖 6. Documentación de la API de la Biblioteca Dinámica
-`[PENDIENTE - Prototipos detallados de thgpio.h, descripción de parámetros para pinMode, digitalWrite, Get_distance, e hilos POSIX de audio concurrente]`
+`[PENDIENTE - Prototipos detallados de roombateca.h, descripción de parámetros para pinMode, digitalWrite, Get_distance, e hilos POSIX de audio concurrente]`
 
 ---
 
