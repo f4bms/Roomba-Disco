@@ -15,3 +15,7 @@ void roombateca_reproducir(int cancion) {
     }
     trigger_notification_audio(CANCIONES[cancion]);
 }
+
+int roombateca_ping(void) {
+    return 42;
+}

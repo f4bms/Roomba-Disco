@@ -17,6 +17,10 @@ extern "C" {
  * cuando se decida dónde viven los assets de audio en la imagen final. */
 void roombateca_reproducir(int cancion);
 
+/* Healthcheck: no toca hardware, solo confirma que la biblioteca está
+ * cargada. Pensada para que el servidor la use al arrancar. */
+int roombateca_ping(void);
+
 /* Por definir: el resto de operaciones de alto nivel del robot (giros,
  * avance/retroceso compuesto, evasión de obstáculos), construidas sobre
  * motor_izquierdo_set/motor_derecho_set de motores.h. */
