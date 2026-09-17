@@ -10,8 +10,7 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
-
-#include "cJSON.h"
+#include <cJSON.h>
 
 #define DEFAULT_SOCKET_PATH "/tmp/roomba-logica.sock"
 #define DEFAULT_STATE_PATH "Logica/estado.json"
