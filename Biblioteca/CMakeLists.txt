@@ -7,6 +7,7 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 find_package(Threads REQUIRED)
 
 add_library(roombateca SHARED
+    lib/gpio_control.c
     lib/motores.c
     lib/sensores.c
     lib/leds.c
@@ -18,7 +19,7 @@ target_include_directories(roombateca PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
-target_link_libraries(roombateca PRIVATE Threads::Threads)
+target_link_libraries(roombateca PRIVATE Threads::Threads gpiod)
 
 install(TARGETS roombateca LIBRARY DESTINATION lib)
 install(DIRECTORY include/ DESTINATION include)
