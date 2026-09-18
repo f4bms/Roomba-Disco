@@ -28,6 +28,13 @@ CMakeFiles/
 cmake_install.cmake
 CTestTestfile.cmake
 
+# ==== Artefactos de compilacion e instalacion ====
+Servidor/third_party/**/build/
+Servidor/third_party/**/*.o
+Servidor/third_party/**/*.a
+install/
+/dist/
+
 # ==== Biblioteca (C) ====
 Biblioteca/build/
 Biblioteca/*.so
@@ -55,6 +62,7 @@ Thumbs.db
 
 # ==== Archivos random ====
 UI.md
+spec.md
 
 # ==== Scratch temporal ====
 temp/

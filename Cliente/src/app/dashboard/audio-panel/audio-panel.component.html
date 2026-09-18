@@ -9,21 +9,23 @@
           <div class="playlist-item" [class.active]="i === currentTrack" role="listitem">
             {{ track }}
           </div>
+        } @empty {
+          <div class="playlist-item">Lista no disponible</div>
         }
       </div>
 
       <div class="audio-controls">
         <div class="transport">
-          <button mat-icon-button aria-label="Pista anterior" (click)="prev()">
+          <button mat-icon-button aria-label="Pista anterior" [disabled]="!powered" (click)="prev()">
             <mat-icon>skip_previous</mat-icon>
           </button>
-          <button mat-icon-button aria-label="Reproducir o pausar" (click)="togglePlay()">
-            <mat-icon>{{ status === 'playing' ? 'pause' : 'play_arrow' }}</mat-icon>
+          <button mat-icon-button aria-label="Reproducir o pausar" [disabled]="!powered" (click)="togglePlay()">
+            <mat-icon>{{ playing ? 'pause' : 'play_arrow' }}</mat-icon>
           </button>
-          <button mat-icon-button aria-label="Detener" (click)="stop()">
+          <button mat-icon-button aria-label="Detener" [disabled]="!powered" (click)="stop()">
             <mat-icon>stop</mat-icon>
           </button>
-          <button mat-icon-button aria-label="Pista siguiente" (click)="next()">
+          <button mat-icon-button aria-label="Pista siguiente" [disabled]="!powered" (click)="next()">
             <mat-icon>skip_next</mat-icon>
           </button>
         </div>
@@ -35,6 +37,7 @@
             [min]="0"
             [max]="100"
             [step]="1"
+            [disabled]="!powered"
             [discrete]="true">
             <input matSliderThumb [value]="volume" (valueChange)="onVolumeChange($event)">
           </mat-slider>

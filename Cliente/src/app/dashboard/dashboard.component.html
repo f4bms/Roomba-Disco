@@ -1,4 +1,7 @@
-<div class="dashboard" [class.powered-off]="!powered">
+<div class="dashboard">
+
+  <!-- Estado de conexion con el servidor (temporal para pruebas) -->
+  <div class="connection-bar">Servidor: {{ connectionStatus() }}</div>
 
   <!-- Columna izquierda -->
   <div class="left-column">
@@ -11,14 +14,15 @@
         [class.mode-auto]="mode === 'AUTO'"
         [class.mode-manual]="mode === 'MANUAL'"
         (click)="toggleMode()"
+        [disabled]="!powered || connectionStatus() !== 'conectado'"
         [attr.aria-label]="'Modo actual ' + mode">
-        {{ mode === 'AUTO' ? 'AUTO' : 'MAN' }}
+        {{ mode }}
       </button>
 
       @for (sensor of sensors; track sensor.id) {
         <div class="sensor-box" [class.obstacle]="sensor.obstacle">
           <span class="sensor-label">Sensor {{ sensor.id }}</span>
-          <span class="sensor-value">{{ sensor.distance }} cm</span>
+          <span class="sensor-value">{{ sensor.distance === null ? '---' : sensor.distance + ' cm' }}</span>
         </div>
       }
     </div>
@@ -27,7 +31,7 @@
     <app-audio-panel></app-audio-panel>
 
     <!-- Mapa en tiempo real -->
-    <app-map-view></app-map-view>
+    <app-map-view [width]="map.width" [height]="map.height" [cells]="map.cells"></app-map-view>
   </div>
 
   <!-- Columna derecha -->
@@ -36,8 +40,7 @@
       <mat-card-content>
         <mat-card-title>Joystick</mat-card-title>
         <controll-movement-joystick
-          [disabled]="mode !== 'MANUAL'"
-          (joystickAngle)="onAngleChange($event)"
+          [disabled]="!powered || mode !== 'MANUAL'"
           (joystickDirection)="onDirectionChange($event)">
         </controll-movement-joystick>
       </mat-card-content>
@@ -51,7 +54,7 @@
           [max]="1000"
           [step]="1"
           [discrete]="true"
-          [disabled]="mode !== 'MANUAL'">
+          [disabled]="!powered || mode !== 'MANUAL'">
           <input matSliderThumb [value]="speed" (valueChange)="onSpeedChange($event)">
         </mat-slider>
       </div>

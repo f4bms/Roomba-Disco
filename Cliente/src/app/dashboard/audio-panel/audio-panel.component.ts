@@ -1,10 +1,9 @@
-import { Component } from '@angular/core';
+import { Component, effect, inject } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
 import { MatSliderModule } from '@angular/material/slider';
-
-type AudioStatus = 'playing' | 'paused' | 'stopped';
+import { RobotSocketService } from '../../services/robot-socket.service';
 
 @Component({
   selector: 'app-audio-panel',
@@ -19,34 +18,46 @@ type AudioStatus = 'playing' | 'paused' | 'stopped';
 })
 export class AudioPanelComponent {
 
-  tracks: string[] = ['Pista 1', 'Pista 2', 'Pista 3', 'Pista 4'];
-  currentTrack = 0;
-  status: AudioStatus = 'stopped';
+  private readonly socket = inject(RobotSocketService);
+
+  // Lista real y estado de reproduccion llegaran en AUDIO:STATUS desde Logica.
+  tracks: string[] = [];
+  currentTrack: number | null = null;
+
+  // Estado local para pruebas: refleja el ultimo comando enviado.
+  playing = false;
+  powered = true;
   volume = 50;
 
+  constructor() {
+    effect(() => {
+      const state = this.socket.state();
+      if (state === null) return;
+      this.powered = state.reported.power;
+      this.playing = state.reported.audio.status === 'playing';
+      this.volume = state.reported.audio.volume;
+      this.currentTrack = state.reported.audio.track;
+      this.tracks = state.reported.audio.tracks;
+    });
+  }
+
   togglePlay() {
-    this.status = this.status === 'playing' ? 'paused' : 'playing';
+    this.socket.sendDesired({ audio: { action: this.playing ? 'PAUSE' : 'PLAY' } });
   }
 
   stop() {
-    this.status = 'stopped';
+    this.socket.sendDesired({ audio: { action: 'STOP' } });
   }
 
   prev() {
-    if (this.tracks.length === 0) {
-      return;
-    }
-    this.currentTrack = (this.currentTrack - 1 + this.tracks.length) % this.tracks.length;
+    this.socket.sendDesired({ audio: { action: 'PREV' } });
   }
 
   next() {
-    if (this.tracks.length === 0) {
-      return;
-    }
-    this.currentTrack = (this.currentTrack + 1) % this.tracks.length;
+    this.socket.sendDesired({ audio: { action: 'NEXT' } });
   }
 
   onVolumeChange(value: number) {
-    this.volume = value;
+    this.socket.sendDesired({ audio: { volume: value } });
   }
 }

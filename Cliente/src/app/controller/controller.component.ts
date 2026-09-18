@@ -23,7 +23,7 @@ import { FormsModule } from '@angular/forms';
 
 export class ControllerComponent implements OnDestroy {
 
-  serverUrl = 'ws://localhost:8080';
+  serverUrl = 'ws://localhost:8080/ws';
   connectionStatus = 'desconectado';
   lastMessage = '';
   private socket: WebSocket | null = null;

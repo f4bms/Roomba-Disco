@@ -1,6 +1,6 @@
-# Servidor WebSocket minimo
+# Servidor web y WebSocket
 
-Servidor de prueba para el cliente Angular. No requiere CivetWeb ni bibliotecas externas: usa sockets POSIX y la biblioteca estandar de C.
+El servidor C usa CivetWeb vendorizado para entregar el cliente Angular compilado y el canal WebSocket desde el mismo proceso. No accede al Driver ni al hardware: transporta documentos JSON entre el Cliente y la capa Logica por un socket Unix local.
 
 ## Compilar con CMake
 
@@ -11,7 +11,7 @@ cmake -S Servidor -B Servidor/build
 cmake --build Servidor/build
 ```
 
-El ejecutable se genera en `Servidor/build/servidor`.
+El build compila el cliente Angular y genera el ejecutable en `Servidor/build/servidor`.
 
 Tambien se conserva un `Makefile` como atajo compatible para entornos que ya lo utilicen:
 
@@ -19,30 +19,46 @@ Tambien se conserva un `Makefile` como atajo compatible para entornos que ya lo 
 make -C Servidor
 ```
 
-## Ejecutar
+## Ejecutar en desarrollo
 
 ```bash
-./Servidor/build/servidor
+./Servidor/build/logica_simulador Logica/estado.json /tmp/roomba-logica.sock
+./Servidor/build/servidor 8080 "$PWD/Cliente/dist/scrap-e-controller/browser" /tmp/roomba-logica.sock
 ```
 
-El puerto predeterminado es `8080`. Se puede cambiar como primer argumento:
+Abre `http://localhost:8080` en el navegador. El canal WebSocket se expone en `ws://localhost:8080/ws`.
+
+## Instalar en la Raspberry Pi
 
 ```bash
-./Servidor/build/servidor 9000
+cmake --install Servidor/build --prefix /opt/roomba-disco
+/opt/roomba-disco/bin/servidor
 ```
 
-Cuando un navegador establece correctamente el handshake WebSocket, la consola muestra:
+La instalacion incluye el ejecutable y los assets del cliente en `share/roomba-disco/www`. El binario los localiza automaticamente. Desde otro equipo de la misma red, abre:
 
 ```text
-cliente conectado
+http://IP_DE_LA_RASPBERRY:8080
 ```
 
-El servidor tambien muestra `cliente desconectado`, responde a `ping` con `pong` y devuelve al cliente los mensajes de texto recibidos.
+El cliente usa el mismo origen para conectarse por WebSocket en:
 
-Para probarlo desde la consola del navegador mientras el cliente Angular esta abierto:
+```text
+ws://IP_DE_LA_RASPBERRY:8080/ws
+```
+
+## Estado actual del canal
+
+Cuando un cliente abre el WebSocket, solicita el snapshot completo a Logica. Los cambios de controles se envian como `set_state`; Logica los valida, actualiza `Logica/estado.json` y devuelve un nuevo snapshot a todos los clientes conectados.
 
 ```js
-const socket = new WebSocket('ws://localhost:8080');
-socket.onopen = () => socket.send('prueba de conexion');
-socket.onmessage = event => console.log(event.data);
+const socket = new WebSocket('ws://localhost:8080/ws');
+socket.onopen = () => socket.send(JSON.stringify({ type: 'get_state' }));
+socket.onmessage = event => console.log(JSON.parse(event.data));
+```
+
+La prueba automatizada del recorrido WebSocket -> Servidor -> Logica -> archivo JSON -> WebSocket se ejecuta con:
+
+```bash
+python3 Servidor/test_integracion.py
 ```
