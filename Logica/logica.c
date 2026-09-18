@@ -10,7 +10,9 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
-#include <cJSON.h>
+
+#include "cJSON.h"
+#include "roombateca_control.h"
 
 #define DEFAULT_SOCKET_PATH "/tmp/roomba-logica.sock"
 #define DEFAULT_STATE_PATH "Logica/estado.json"
@@ -114,14 +116,29 @@ static bool apply_desired_state(cJSON *state, const cJSON *patch) {
         const cJSON *direction = cJSON_GetObjectItemCaseSensitive(motion, "direction");
         const cJSON *speed = cJSON_GetObjectItemCaseSensitive(motion, "speed");
         if (cJSON_IsObject(desired_motion) && cJSON_IsObject(reported_motion)) {
-            if (string_is_one_of(direction, directions, 5)) {
-                replace_item(desired_motion, "direction", cJSON_Duplicate(direction, true));
-                replace_item(reported_motion, "direction", cJSON_Duplicate(direction, true));
-                changed = true;
-            }
-            if (cJSON_IsNumber(speed) && speed->valuedouble >= 0 && speed->valuedouble <= 1000) {
-                replace_item(desired_motion, "speed", cJSON_CreateNumber(speed->valueint));
-                replace_item(reported_motion, "speed", cJSON_CreateNumber(speed->valueint));
+            bool valid_direction = string_is_one_of(direction, directions, 5);
+            bool valid_speed = cJSON_IsNumber(speed) && speed->valuedouble >= 0 && speed->valuedouble <= 1000;
+            cJSON *current_direction = cJSON_GetObjectItemCaseSensitive(desired_motion, "direction");
+            cJSON *current_speed = cJSON_GetObjectItemCaseSensitive(desired_motion, "speed");
+            const char *requested_direction = valid_direction
+                ? direction->valuestring
+                : (cJSON_IsString(current_direction) ? current_direction->valuestring : NULL);
+            int requested_speed = valid_speed
+                ? speed->valueint
+                : (cJSON_IsNumber(current_speed) ? current_speed->valueint : -1);
+
+            if ((valid_direction || valid_speed)
+                    && requested_direction != NULL
+                    && requested_speed >= 0
+                    && roombateca_set_motion(requested_direction, requested_speed) == 0) {
+                if (valid_direction) {
+                    replace_item(desired_motion, "direction", cJSON_Duplicate(direction, true));
+                    replace_item(reported_motion, "direction", cJSON_Duplicate(direction, true));
+                }
+                if (valid_speed) {
+                    replace_item(desired_motion, "speed", cJSON_CreateNumber(speed->valueint));
+                    replace_item(reported_motion, "speed", cJSON_CreateNumber(speed->valueint));
+                }
                 changed = true;
             }
         }
@@ -245,6 +262,12 @@ int main(int argc, char **argv) {
     }
     free(state_text);
 
+    if (roombateca_control_init() != 0) {
+        fprintf(stderr, "no se pudo inicializar el control de motores\n");
+        cJSON_Delete(state);
+        return EXIT_FAILURE;
+    }
+
     signal(SIGINT, stop_logic);
     signal(SIGTERM, stop_logic);
     signal(SIGPIPE, SIG_IGN);
@@ -252,12 +275,14 @@ int main(int argc, char **argv) {
     listening_socket = socket(AF_UNIX, SOCK_STREAM, 0);
     if (listening_socket < 0) {
         perror("socket");
+        roombateca_control_cleanup();
         cJSON_Delete(state);
         return EXIT_FAILURE;
     }
     address.sun_family = AF_UNIX;
     if (strlen(socket_path) >= sizeof(address.sun_path)) {
         fprintf(stderr, "ruta de socket demasiado larga\n");
+        roombateca_control_cleanup();
         cJSON_Delete(state);
         close(listening_socket);
         return EXIT_FAILURE;
@@ -266,6 +291,7 @@ int main(int argc, char **argv) {
     unlink(socket_path);
     if (bind(listening_socket, (struct sockaddr *)&address, sizeof(address)) != 0 || listen(listening_socket, 4) != 0) {
         perror("bind/listen");
+        roombateca_control_cleanup();
         cJSON_Delete(state);
         close(listening_socket);
         unlink(socket_path);
@@ -285,6 +311,7 @@ int main(int argc, char **argv) {
     }
 
     cJSON_Delete(state);
+    roombateca_control_cleanup();
     if (listening_socket >= 0) close(listening_socket);
     unlink(socket_path);
     return EXIT_SUCCESS;

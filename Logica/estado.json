@@ -1,12 +1,12 @@
 {
 	"type":	"state",
 	"protocolVersion":	1,
-	"revision":	339,
+	"revision":	4392,
 	"desired":	{
 		"mode":	"MANUAL",
 		"motion":	{
 			"direction":	"STOP",
-			"speed":	249
+			"speed":	356
 		},
 		"audio":	{
 			"action":	"PLAY",
@@ -18,7 +18,7 @@
 		"mode":	"MANUAL",
 		"motion":	{
 			"direction":	"STOP",
-			"speed":	249
+			"speed":	356
 		},
 		"audio":	{
 			"status":	"playing",
@@ -42,7 +42,7 @@
 		"map":	{
 			"width":	8,
 			"height":	6,
-			"cells":	[0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 2, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+			"cells":	[0, 0, 0, 0, 0, 0, 2, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 2, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 		}
 	}
 }

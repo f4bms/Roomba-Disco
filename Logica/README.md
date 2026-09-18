@@ -34,3 +34,49 @@ Luego abre `http://localhost:8080`. Para probar todo el recorrido automaticament
 ```bash
 python3 Servidor/test_integracion.py
 ```
+
+## Como correr cliente-servidor-logica-biblioteca como conjunto
+
+1) Compilar cliente
+
+```bash
+cd Cliente
+npm install
+npm run build
+npm start
+```
+
+2) Compilar servidor y logica
+
+```bash
+cd .. 
+make -S Servidor -B Servidor/build
+cmake --build Servidor/build
+```
+
+3) Ejecutar logica(en una segunda terminal)
+
+```bash
+LD_LIBRARY_PATH=Servidor/build/roombateca \
+./Servidor/build/logica_simulador \
+Logica/estado.json\
+/tmp/roomba-logica.sock
+```
+
+4) Ejecutar servidor(en una tercera terminal)
+
+```bash
+./Servidor/build/servidor \
+8080 \
+"$PWD/Cliente/dist/scrap-e-controller/browser" \
+/tmp/roomba-logica.sock
+```
+---
+Tanto la ejecución y la logica se hacen de la manera anterior debido a la conexión de socket que se utiliza para su comunicación
+
+5) Probar la aplicación
+
+```bash
+http://localhost:8080
+
+```
