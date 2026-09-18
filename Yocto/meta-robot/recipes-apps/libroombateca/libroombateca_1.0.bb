@@ -6,6 +6,9 @@ LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda
 # Clase CMake
 inherit cmake
 
+# gpio_control.c enlaza contra libgpiod (API v2, char device)
+DEPENDS += "libgpiod"
+
 # El código de Biblioteca/ vive fuera de esta capa, en el mismo repo
 FILESEXTRAPATHS:prepend := "${THISDIR}/../../../../Biblioteca:"
 
