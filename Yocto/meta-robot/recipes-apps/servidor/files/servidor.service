@@ -1,0 +1,11 @@
+[Unit]
+Description=Servidor web Roomba-Disco
+After=network.target logica.service
+Wants=logica.service
+
+[Service]
+ExecStart=/usr/bin/servidor 8080 /usr/share/roomba-disco/www /run/roomba-logica.sock
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
