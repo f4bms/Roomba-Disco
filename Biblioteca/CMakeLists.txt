@@ -10,6 +10,7 @@ add_library(roombateca SHARED
     lib/gpio_control.c
     lib/motores.c
     lib/sensores.c
+    lib/encoders.c
     lib/leds.c
     lib/audio_th.c
     lib/roombateca.c

@@ -1,6 +1,8 @@
 #include "roombateca_control.h"
 
+#include "encoders.h"
 #include "motores.h"
+#include "sensores.h"
 
 #include <string.h>
 
@@ -15,10 +17,22 @@ static int scaled_speed(int speed) {
 }
 
 int roombateca_control_init(void) {
-	return motor_control_init();
+	if (motor_control_init() != 0) return -1;
+	if (sensores_init() != 0) {
+		motor_control_cleanup();
+		return -1;
+	}
+	if (encoders_init() != 0) {
+		sensores_cleanup();
+		motor_control_cleanup();
+		return -1;
+	}
+	return 0;
 }
 
 void roombateca_control_cleanup(void) {
+	encoders_cleanup();
+	sensores_cleanup();
 	motor_control_cleanup();
 }
 

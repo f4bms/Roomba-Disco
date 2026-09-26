@@ -2,6 +2,8 @@
 
 #include <errno.h>
 #include <limits.h>
+#include <poll.h>
+#include <pthread.h>
 #include <signal.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -17,9 +19,15 @@
 #define DEFAULT_SOCKET_PATH "/tmp/roomba-logica.sock"
 #define DEFAULT_STATE_PATH "Logica/estado.json"
 #define MESSAGE_CAPACITY (256 * 1024)
+#define CONTROL_TICK_MS 100
 
 static volatile sig_atomic_t keep_running = 1;
 static int listening_socket = -1;
+static pthread_mutex_t state_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+struct control_context {
+    cJSON *state;
+};
 
 static void stop_logic(int signal_number) {
     (void)signal_number;
@@ -89,6 +97,28 @@ static bool string_is_one_of(const cJSON *item, const char *const values[], size
 
 static void replace_item(cJSON *object, const char *name, cJSON *replacement) {
     if (replacement != NULL) cJSON_ReplaceItemInObjectCaseSensitive(object, name, replacement);
+}
+
+static void control_tick(cJSON *state) {
+    (void)state;
+}
+
+static void *control_thread_main(void *argument) {
+    struct control_context *context = argument;
+
+    while (keep_running) {
+        struct timespec interval = {
+            .tv_sec = CONTROL_TICK_MS / 1000,
+            .tv_nsec = (CONTROL_TICK_MS % 1000) * 1000000L,
+        };
+
+        nanosleep(&interval, NULL);
+        if (!keep_running) break;
+        pthread_mutex_lock(&state_mutex);
+        control_tick(context->state);
+        pthread_mutex_unlock(&state_mutex);
+    }
+    return NULL;
 }
 
 static bool apply_desired_state(cJSON *state, const cJSON *patch) {
@@ -211,6 +241,7 @@ static void process_message(int client_socket, cJSON *state, const char *state_p
     const cJSON *patch;
 
     if (request == NULL) return;
+    pthread_mutex_lock(&state_mutex);
     type = cJSON_GetObjectItemCaseSensitive(request, "type");
     patch = cJSON_GetObjectItemCaseSensitive(request, "desired");
     if (cJSON_IsString(type) && strcmp(type->valuestring, "get_state") == 0) {
@@ -221,18 +252,39 @@ static void process_message(int client_socket, cJSON *state, const char *state_p
             send_state(client_socket, state);
         }
     }
+    pthread_mutex_unlock(&state_mutex);
     cJSON_Delete(request);
 }
 
 static void serve_client(int client_socket, cJSON *state, const char *state_path) {
     char buffer[MESSAGE_CAPACITY];
     size_t used = 0;
+    struct pollfd client_poll = {
+        .fd = client_socket,
+        .events = POLLIN,
+    };
 
-    if (!send_state(client_socket, state)) return;
+    pthread_mutex_lock(&state_mutex);
+    if (!send_state(client_socket, state)) {
+        pthread_mutex_unlock(&state_mutex);
+        return;
+    }
+    pthread_mutex_unlock(&state_mutex);
     while (keep_running) {
-        ssize_t received = recv(client_socket, buffer + used, sizeof(buffer) - used - 1, 0);
+        int poll_result = poll(&client_poll, 1, CONTROL_TICK_MS);
         char *line_start;
         char *newline;
+
+        if (poll_result < 0) {
+            if (errno == EINTR) continue;
+            break;
+        }
+        if (poll_result == 0) {
+            continue;
+        }
+        if ((client_poll.revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) break;
+
+        ssize_t received = recv(client_socket, buffer + used, sizeof(buffer) - used - 1, 0);
         if (received <= 0) break;
         used += (size_t)received;
         buffer[used] = '\0';
@@ -252,6 +304,9 @@ int main(int argc, char **argv) {
     const char *state_path = argc > 1 ? argv[1] : DEFAULT_STATE_PATH;
     const char *socket_path = argc > 2 ? argv[2] : DEFAULT_SOCKET_PATH;
     struct sockaddr_un address = {0};
+    pthread_t control_thread;
+    struct control_context control = {0};
+    bool control_thread_started = false;
     char *state_text = read_file(state_path);
     cJSON *state;
 
@@ -261,6 +316,7 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
     free(state_text);
+    control.state = state;
 
     if (roombateca_control_init() != 0) {
         fprintf(stderr, "no se pudo inicializar el control de motores\n");
@@ -272,9 +328,19 @@ int main(int argc, char **argv) {
     signal(SIGTERM, stop_logic);
     signal(SIGPIPE, SIG_IGN);
 
+    if (pthread_create(&control_thread, NULL, control_thread_main, &control) != 0) {
+        fprintf(stderr, "no se pudo iniciar el ciclo de control\n");
+        roombateca_control_cleanup();
+        cJSON_Delete(state);
+        return EXIT_FAILURE;
+    }
+    control_thread_started = true;
+
     listening_socket = socket(AF_UNIX, SOCK_STREAM, 0);
     if (listening_socket < 0) {
         perror("socket");
+        keep_running = 0;
+        if (control_thread_started) pthread_join(control_thread, NULL);
         roombateca_control_cleanup();
         cJSON_Delete(state);
         return EXIT_FAILURE;
@@ -282,6 +348,8 @@ int main(int argc, char **argv) {
     address.sun_family = AF_UNIX;
     if (strlen(socket_path) >= sizeof(address.sun_path)) {
         fprintf(stderr, "ruta de socket demasiado larga\n");
+        keep_running = 0;
+        if (control_thread_started) pthread_join(control_thread, NULL);
         roombateca_control_cleanup();
         cJSON_Delete(state);
         close(listening_socket);
@@ -291,6 +359,8 @@ int main(int argc, char **argv) {
     unlink(socket_path);
     if (bind(listening_socket, (struct sockaddr *)&address, sizeof(address)) != 0 || listen(listening_socket, 4) != 0) {
         perror("bind/listen");
+        keep_running = 0;
+        if (control_thread_started) pthread_join(control_thread, NULL);
         roombateca_control_cleanup();
         cJSON_Delete(state);
         close(listening_socket);
@@ -310,6 +380,8 @@ int main(int argc, char **argv) {
         close(client_socket);
     }
 
+    keep_running = 0;
+    if (control_thread_started) pthread_join(control_thread, NULL);
     cJSON_Delete(state);
     roombateca_control_cleanup();
     if (listening_socket >= 0) close(listening_socket);

@@ -63,7 +63,7 @@ target_include_directories(logica_simulador PRIVATE
     "${cjson_SOURCE_DIR}"
     "${CMAKE_CURRENT_SOURCE_DIR}/../Logica"
 )
-target_link_libraries(logica_simulador PRIVATE cjson roombateca)
+target_link_libraries(logica_simulador PRIVATE cjson roombateca pthread)
 target_compile_options(logica_simulador PRIVATE -Wall -Wextra -Wpedantic)
 
 target_include_directories(servidor PRIVATE
