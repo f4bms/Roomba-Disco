@@ -10,6 +10,7 @@ Cliente/.env.*
 
 # ==== Servidor (C) ====
 Servidor/build/
+Servidor/build-sim/
 Servidor/*.o
 Servidor/*.obj
 Servidor/*.out

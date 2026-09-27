@@ -1,12 +1,12 @@
 {
 	"type":	"state",
 	"protocolVersion":	1,
-	"revision":	4392,
+	"revision":	4684,
 	"desired":	{
 		"mode":	"MANUAL",
 		"motion":	{
-			"direction":	"STOP",
-			"speed":	356
+			"direction":	"TURN_L",
+			"speed":	300
 		},
 		"audio":	{
 			"action":	"PLAY",
@@ -17,8 +17,8 @@
 		"power":	true,
 		"mode":	"MANUAL",
 		"motion":	{
-			"direction":	"STOP",
-			"speed":	356
+			"direction":	"TURN_L",
+			"speed":	300
 		},
 		"audio":	{
 			"status":	"playing",

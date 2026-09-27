@@ -14,6 +14,8 @@
 #include <unistd.h>
 
 #include "cJSON.h"
+#include "mapa.h"
+#include "odometria.h"
 #include "roombateca_control.h"
 
 #define DEFAULT_SOCKET_PATH "/tmp/roomba-logica.sock"
@@ -27,6 +29,8 @@ static pthread_mutex_t state_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 struct control_context {
     cJSON *state;
+    odometria_t odometria;
+    mapa_t mapa;
 };
 
 static void stop_logic(int signal_number) {
@@ -99,8 +103,81 @@ static void replace_item(cJSON *object, const char *name, cJSON *replacement) {
     if (replacement != NULL) cJSON_ReplaceItemInObjectCaseSensitive(object, name, replacement);
 }
 
-static void control_tick(cJSON *state) {
-    (void)state;
+static void set_number(cJSON *object, const char *name, double value) {
+    cJSON *item = cJSON_CreateNumber(value);
+
+    if (item == NULL) return;
+    if (cJSON_GetObjectItemCaseSensitive(object, name) != NULL) {
+        replace_item(object, name, item);
+    } else if (!cJSON_AddItemToObject(object, name, item)) {
+        cJSON_Delete(item);
+    }
+}
+
+static void update_reported_map(cJSON *reported, const mapa_t *mapa) {
+    cJSON *reported_map = cJSON_GetObjectItemCaseSensitive(reported, "map");
+    cJSON *cells;
+    size_t index;
+
+    if (!cJSON_IsObject(reported_map)) {
+        reported_map = cJSON_AddObjectToObject(reported, "map");
+    }
+    if (reported_map == NULL) return;
+    set_number(reported_map, "width", mapa->config.width);
+    set_number(reported_map, "height", mapa->config.height);
+    cells = cJSON_CreateArray();
+    if (cells == NULL) return;
+    for (index = 0; index < mapa_cantidad_celdas(mapa); ++index) {
+        cJSON_AddItemToArray(cells, cJSON_CreateNumber(mapa_obtener_celdas(mapa)[index]));
+    }
+    if (cJSON_GetObjectItemCaseSensitive(reported_map, "cells") != NULL) {
+        replace_item(reported_map, "cells", cells);
+    } else if (!cJSON_AddItemToObject(reported_map, "cells", cells)) {
+        cJSON_Delete(cells);
+    }
+}
+
+static void control_tick(cJSON *state, odometria_t *odometria, mapa_t *mapa) {
+    float distances[SENSOR_CANTIDAD];
+    encoder_lectura_t encoder_readings[ENCODER_CANTIDAD];
+    cJSON *reported = cJSON_GetObjectItemCaseSensitive(state, "reported");
+    cJSON *sensors = cJSON_GetObjectItemCaseSensitive(reported, "sensors");
+    int sensor;
+
+    if (!cJSON_IsObject(reported) || !cJSON_IsArray(sensors)) return;
+    if (roombateca_read_sensors(distances) != 0
+            || roombateca_read_encoders(encoder_readings) != 0) return;
+
+    if (odometria_actualizar(odometria,
+                             &encoder_readings[ENCODER_IZQUIERDO],
+                             &encoder_readings[ENCODER_DERECHO]) != 0) return;
+
+    const odometria_pose_t *pose = odometria_obtener_pose(odometria);
+    if (mapa_actualizar_pose(mapa, pose) != 0) return;
+    mapa_observar(mapa, pose, 0.0, distances[SENSOR_FRONTAL] * 10.0,
+                  distances[SENSOR_FRONTAL] < 20.0f);
+    mapa_observar(mapa, pose, -1.5707963267948966, distances[SENSOR_IZQUIERDO] * 10.0,
+                  distances[SENSOR_IZQUIERDO] < 20.0f);
+    mapa_observar(mapa, pose, 1.5707963267948966, distances[SENSOR_DERECHO] * 10.0,
+                  distances[SENSOR_DERECHO] < 20.0f);
+
+    for (sensor = 0; sensor < SENSOR_CANTIDAD && sensor < cJSON_GetArraySize(sensors); ++sensor) {
+        cJSON *reading = cJSON_GetArrayItem(sensors, sensor);
+        if (!cJSON_IsObject(reading)) continue;
+        replace_item(reading, "distanceCm", cJSON_CreateNumber(distances[sensor]));
+        replace_item(reading, "obstacle", cJSON_CreateBool(distances[sensor] < 20.0f));
+    }
+
+    cJSON *reported_pose = cJSON_GetObjectItemCaseSensitive(reported, "pose");
+    if (!cJSON_IsObject(reported_pose)) {
+        reported_pose = cJSON_AddObjectToObject(reported, "pose");
+    }
+    if (reported_pose != NULL && pose != NULL) {
+        set_number(reported_pose, "xMm", pose->x_mm);
+        set_number(reported_pose, "yMm", pose->y_mm);
+        set_number(reported_pose, "thetaRad", pose->theta_rad);
+    }
+    update_reported_map(reported, mapa);
 }
 
 static void *control_thread_main(void *argument) {
@@ -115,7 +192,7 @@ static void *control_thread_main(void *argument) {
         nanosleep(&interval, NULL);
         if (!keep_running) break;
         pthread_mutex_lock(&state_mutex);
-        control_tick(context->state);
+        control_tick(context->state, &context->odometria, &context->mapa);
         pthread_mutex_unlock(&state_mutex);
     }
     return NULL;
@@ -317,6 +394,23 @@ int main(int argc, char **argv) {
     }
     free(state_text);
     control.state = state;
+    if (odometria_init(&control.odometria,
+                       (odometria_config_t){.distancia_ruedas_mm = 200.0}) != 0) {
+        fprintf(stderr, "no se pudo inicializar la odometria\n");
+        cJSON_Delete(state);
+        return EXIT_FAILURE;
+    }
+    if (mapa_init(&control.mapa, (mapa_config_t){
+            .width = 8,
+            .height = 6,
+            .resolution_mm = 100.0,
+            .origin_x = 4,
+            .origin_y = 3,
+        }) != 0) {
+        fprintf(stderr, "no se pudo inicializar el mapa\n");
+        cJSON_Delete(state);
+        return EXIT_FAILURE;
+    }
 
     if (roombateca_control_init() != 0) {
         fprintf(stderr, "no se pudo inicializar el control de motores\n");
@@ -331,6 +425,7 @@ int main(int argc, char **argv) {
     if (pthread_create(&control_thread, NULL, control_thread_main, &control) != 0) {
         fprintf(stderr, "no se pudo iniciar el ciclo de control\n");
         roombateca_control_cleanup();
+        mapa_cleanup(&control.mapa);
         cJSON_Delete(state);
         return EXIT_FAILURE;
     }
@@ -342,6 +437,7 @@ int main(int argc, char **argv) {
         keep_running = 0;
         if (control_thread_started) pthread_join(control_thread, NULL);
         roombateca_control_cleanup();
+        mapa_cleanup(&control.mapa);
         cJSON_Delete(state);
         return EXIT_FAILURE;
     }
@@ -351,6 +447,7 @@ int main(int argc, char **argv) {
         keep_running = 0;
         if (control_thread_started) pthread_join(control_thread, NULL);
         roombateca_control_cleanup();
+        mapa_cleanup(&control.mapa);
         cJSON_Delete(state);
         close(listening_socket);
         return EXIT_FAILURE;
@@ -383,6 +480,7 @@ int main(int argc, char **argv) {
     keep_running = 0;
     if (control_thread_started) pthread_join(control_thread, NULL);
     cJSON_Delete(state);
+    mapa_cleanup(&control.mapa);
     roombateca_control_cleanup();
     if (listening_socket >= 0) close(listening_socket);
     unlink(socket_path);
