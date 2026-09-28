@@ -30,6 +30,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   private readonly socket = inject(RobotSocketService);
   readonly connectionStatus = this.socket.status;
+  readonly serverAddress = this.socket.serverAddress;
 
   // Habilitado para prueba aislada cliente-servidor; el valor real vendra de LED:POWER.
   powered = true;
@@ -67,6 +68,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   ngOnDestroy() {
     this.socket.disconnect();
+  }
+
+  applyServer(address: string) {
+    this.socket.setServerAddress(address);
+    this.socket.reconnect();
   }
 
   toggleMode() {

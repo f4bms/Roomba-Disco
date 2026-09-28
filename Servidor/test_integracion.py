@@ -14,7 +14,6 @@ import time
 
 ROOT = Path(__file__).resolve().parent.parent
 BUILD = ROOT / "Servidor" / "build"
-WEB_ROOT = ROOT / "Cliente" / "dist" / "scrap-e-controller" / "browser"
 PORT = 18080
 
 
@@ -83,11 +82,21 @@ def receive_text(connection: socket.socket) -> dict:
     return json.loads(payload.decode())
 
 
+def receive_until(connection: socket.socket, predicate, tries: int = 200) -> dict:
+    for _ in range(tries):
+        message = receive_text(connection)
+        if predicate(message):
+            return message
+    raise AssertionError("no se recibio el mensaje esperado del servidor")
+
+
 def main() -> None:
     with tempfile.TemporaryDirectory() as temporary_directory:
         temporary = Path(temporary_directory)
         state_path = temporary / "estado.json"
         socket_path = temporary / "logica.sock"
+        web_root = temporary / "www"
+        web_root.mkdir()
         shutil.copy(ROOT / "Logica" / "estado.json", state_path)
 
         logic = subprocess.Popen(
@@ -98,7 +107,7 @@ def main() -> None:
             text=True,
         )
         server = subprocess.Popen(
-            [str(BUILD / "servidor"), str(PORT), str(WEB_ROOT), str(socket_path)],
+            [str(BUILD / "servidor"), str(PORT), str(web_root), str(socket_path)],
             cwd=ROOT,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
@@ -108,10 +117,11 @@ def main() -> None:
             wait_for_port(PORT)
             connection = websocket_connect(PORT)
             send_text(connection, {"type": "get_state"})
-            initial = receive_text(connection)
-            assert initial["type"] == "state"
-            assert initial["reported"]["sensors"][1]["distanceCm"] == 18.2
+            initial = receive_until(connection, lambda message: message.get("type") == "state")
+            assert len(initial["reported"]["sensors"]) == 3
+            base_revision = initial["revision"]
 
+            # Cliente -> Logica: un cambio del cliente debe observarse en el estado.
             send_text(connection, {
                 "type": "set_state",
                 "desired": {
@@ -120,17 +130,26 @@ def main() -> None:
                     "audio": {"action": "PLAY", "volume": 73},
                 },
             })
-            updated = receive_text(connection)
-            assert updated["revision"] == initial["revision"] + 1
-            assert updated["desired"]["motion"] == {"direction": "FWD", "speed": 321}
+            updated = receive_until(
+                connection,
+                lambda message: message.get("type") == "state"
+                and message["revision"] >= base_revision + 1
+                and message["desired"]["motion"] == {"direction": "FWD", "speed": 321},
+            )
             assert updated["reported"]["mode"] == "AUTO"
             assert updated["reported"]["audio"]["status"] == "playing"
             assert updated["reported"]["audio"]["volume"] == 73
 
             persisted = json.loads(state_path.read_text())
-            assert persisted == updated
+            assert persisted["desired"]["motion"] == {"direction": "FWD", "speed": 321}
+
+            # Logica -> Cliente: sin enviar nada, la telemetria periodica debe seguir llegando.
+            telemetry = receive_until(connection, lambda message: message.get("type") == "state")
+            assert "map" in telemetry["reported"]
+            assert len(telemetry["reported"]["sensors"]) == 3
+
             connection.close()
-            print("OK: navegador WebSocket -> servidor -> Logica C -> JSON -> navegador")
+            print("OK: cliente WebSocket <-> servidor <-> Logica C (bidireccional + telemetria)")
         finally:
             server.terminate()
             logic.terminate()

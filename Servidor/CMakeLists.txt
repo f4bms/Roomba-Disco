@@ -25,16 +25,22 @@ add_subdirectory(
 set(CLIENT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../Cliente")
 set(CLIENT_DIST_DIR "${CLIENT_DIR}/dist/scrap-e-controller/browser")
 
-find_program(NPM_EXECUTABLE npm)
-if(NOT NPM_EXECUTABLE)
-    message(FATAL_ERROR "npm es necesario para compilar el cliente Angular")
-endif()
+# El cliente es una aplicacion independiente que corre fuera de la Raspberry Pi.
+# Solo se compila/instala junto al servidor cuando se pide explicitamente.
+option(BUILD_CLIENT "Compilar e instalar el cliente Angular junto al servidor" OFF)
 
-add_custom_target(cliente_web
-    COMMAND "${NPM_EXECUTABLE}" run build
-    WORKING_DIRECTORY "${CLIENT_DIR}"
-    COMMENT "Compilando el cliente Angular"
-)
+if(BUILD_CLIENT)
+    find_program(NPM_EXECUTABLE npm)
+    if(NOT NPM_EXECUTABLE)
+        message(FATAL_ERROR "npm es necesario para compilar el cliente Angular")
+    endif()
+
+    add_custom_target(cliente_web
+        COMMAND "${NPM_EXECUTABLE}" run build
+        WORKING_DIRECTORY "${CLIENT_DIR}"
+        COMMENT "Compilando el cliente Angular"
+    )
+endif()
 
 add_library(civetweb STATIC
     third_party/civetweb/src/civetweb.c
@@ -55,7 +61,9 @@ target_compile_definitions(civetweb PRIVATE
 target_link_libraries(civetweb PRIVATE pthread)
 
 add_executable(servidor servidor.c)
-add_dependencies(servidor cliente_web)
+if(BUILD_CLIENT)
+    add_dependencies(servidor cliente_web)
+endif()
 
 add_executable(logica_simulador ../Logica/logica.c)
 target_sources(logica_simulador PRIVATE
@@ -121,5 +129,7 @@ target_compile_options(servidor PRIVATE
 
 install(TARGETS servidor RUNTIME DESTINATION bin)
 install(TARGETS logica_simulador RUNTIME DESTINATION bin)
-install(DIRECTORY "${CLIENT_DIST_DIR}/" DESTINATION share/roomba-disco/www)
+if(BUILD_CLIENT)
+    install(DIRECTORY "${CLIENT_DIST_DIR}/" DESTINATION share/roomba-disco/www)
+endif()
 install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../Logica/estado.json" DESTINATION share/roomba-disco)
