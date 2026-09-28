@@ -12,6 +12,14 @@ export class JoystickComponent implements AfterViewInit {
 
   @Output() public joystickAngle = new EventEmitter<number>();
   @Output() public joystickDirection = new EventEmitter<string>();
+  private lastDirection = 'standby';
+
+  private emitDirection(direction: string) {
+    if (direction !== this.lastDirection) {
+      this.lastDirection = direction;
+      this.joystickDirection.emit(direction);
+    }
+  }
 
   ngAfterViewInit() {
     const zone = document.getElementById('joystick-zone');
@@ -28,10 +36,10 @@ export class JoystickComponent implements AfterViewInit {
       if (!this.disabled) {
         if (data && data.direction) {
           this.joystickAngle.emit(data.angle.degree);
-          this.joystickDirection.emit(data.direction.angle);
+          this.emitDirection(data.direction.angle);
         } else {
           this.joystickAngle.emit(0);
-          this.joystickDirection.emit('standby');
+          this.emitDirection('standby');
         }
 
       }
@@ -40,7 +48,7 @@ export class JoystickComponent implements AfterViewInit {
     manager.on('end', (evt, data) => {
       if (!this.disabled) {
         this.joystickAngle.emit(0);
-        this.joystickDirection.emit('standby');
+        this.emitDirection('standby');
       }
     });
   }
