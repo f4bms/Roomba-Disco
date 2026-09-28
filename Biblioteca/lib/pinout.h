@@ -33,11 +33,6 @@
 #define PIN_ENCODER_IZQ       27   /* pin 13 */
 #define PIN_ENCODER_DER       11   /* pin 23 */
 
-/* MPU6050 en I2C1 (GPIO2 = SDA, pin 3; GPIO3 = SCL, pin 5), AD0 a GND. */
-#define IMU_I2C_DEV           "/dev/i2c-1"
-#define IMU_I2C_ADDR          0x68
-#define PIN_IMU_INT            4   /* pin 7, opcional */
-
 /* LEDs de estado, directos con resistencia serie (≤ 5 mA). */
 #define PIN_LED_ENCENDIDO     25   /* pin 22, verde */
 #define PIN_LED_ALERTA        24   /* pin 18, rojo */

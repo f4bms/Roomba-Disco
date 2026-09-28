@@ -6,7 +6,6 @@
 #include "leds.h"
 #include "audio_th.h"
 #include "encoders.h"
-#include "imu.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -18,8 +17,7 @@ extern "C" {
 #define ROOMBATECA_LEDS     (1u << 2)
 #define ROOMBATECA_AUDIO    (1u << 3)
 #define ROOMBATECA_ENCODERS (1u << 4)  /* requiere ROOMBATECA_MOTORES */
-#define ROOMBATECA_IMU      (1u << 5)
-#define ROOMBATECA_TODOS    (0x3Fu)
+#define ROOMBATECA_TODOS    (0x1Fu)
 
 /* Inicia los módulos pedidos, motores primero. Si uno falla, deshace los
  * anteriores. Devuelve 0 o -errno. */
