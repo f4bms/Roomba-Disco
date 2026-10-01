@@ -6,11 +6,13 @@
 #include <pthread.h>
 #include <signal.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "cJSON.h"
@@ -22,10 +24,14 @@
 #define DEFAULT_STATE_PATH "Logica/estado.json"
 #define MESSAGE_CAPACITY (256 * 1024)
 #define CONTROL_TICK_MS 100
+#define WATCHDOG_TIMEOUT_NS 2000000000ULL
 
 static volatile sig_atomic_t keep_running = 1;
 static int listening_socket = -1;
 static pthread_mutex_t state_mutex = PTHREAD_MUTEX_INITIALIZER;
+static uint64_t last_heartbeat_ns;
+static unsigned long state_generation = 1;
+static bool watchdog_stopped;
 
 struct control_context {
     cJSON *state;
@@ -114,6 +120,29 @@ static void set_number(cJSON *object, const char *name, double value) {
     }
 }
 
+static uint64_t monotonic_now_ns(void) {
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    return (uint64_t)now.tv_sec * 1000000000ULL + (uint64_t)now.tv_nsec;
+}
+
+static void stop_state(cJSON *state) {
+    cJSON *desired = cJSON_GetObjectItemCaseSensitive(state, "desired");
+    cJSON *reported = cJSON_GetObjectItemCaseSensitive(state, "reported");
+    cJSON *desired_motion = cJSON_GetObjectItemCaseSensitive(desired, "motion");
+    cJSON *reported_motion = cJSON_GetObjectItemCaseSensitive(reported, "motion");
+
+    roombateca_set_motion("STOP", 0);
+    if (cJSON_IsObject(desired_motion)) {
+        replace_item(desired_motion, "direction", cJSON_CreateString("STOP"));
+        replace_item(desired_motion, "speed", cJSON_CreateNumber(0));
+    }
+    if (cJSON_IsObject(reported_motion)) {
+        replace_item(reported_motion, "direction", cJSON_CreateString("STOP"));
+        replace_item(reported_motion, "speed", cJSON_CreateNumber(0));
+    }
+}
+
 static void update_reported_map(cJSON *reported, const mapa_t *mapa) {
     cJSON *reported_map = cJSON_GetObjectItemCaseSensitive(reported, "map");
     cJSON *cells;
@@ -139,13 +168,14 @@ static void update_reported_map(cJSON *reported, const mapa_t *mapa) {
 
 static void control_tick(cJSON *state, odometria_t *odometria, mapa_t *mapa) {
     float distances[SENSOR_CANTIDAD];
+    bool sensor_valid[SENSOR_CANTIDAD];
     encoder_lectura_t encoder_readings[ENCODER_CANTIDAD];
     cJSON *reported = cJSON_GetObjectItemCaseSensitive(state, "reported");
     cJSON *sensors = cJSON_GetObjectItemCaseSensitive(reported, "sensors");
     int sensor;
 
     if (!cJSON_IsObject(reported) || !cJSON_IsArray(sensors)) return;
-    if (roombateca_read_sensors(distances) != 0
+        if (roombateca_read_sensors(distances, sensor_valid) != 0
             || roombateca_read_encoders(encoder_readings) != 0) return;
 
     if (odometria_actualizar(odometria,
@@ -154,18 +184,22 @@ static void control_tick(cJSON *state, odometria_t *odometria, mapa_t *mapa) {
 
     const odometria_pose_t *pose = odometria_obtener_pose(odometria);
     if (mapa_actualizar_pose(mapa, pose) != 0) return;
-    mapa_observar(mapa, pose, 0.0, distances[SENSOR_FRONTAL] * 10.0,
-                  distances[SENSOR_FRONTAL] < 20.0f);
-    mapa_observar(mapa, pose, -1.5707963267948966, distances[SENSOR_IZQUIERDO] * 10.0,
-                  distances[SENSOR_IZQUIERDO] < 20.0f);
-    mapa_observar(mapa, pose, 1.5707963267948966, distances[SENSOR_DERECHO] * 10.0,
-                  distances[SENSOR_DERECHO] < 20.0f);
+    if (sensor_valid[SENSOR_FRONTAL]) {
+        mapa_observar(mapa, pose, 0.0, distances[SENSOR_FRONTAL] * 10.0,
+                      distances[SENSOR_FRONTAL] < 20.0f);
+    }
+    if (sensor_valid[SENSOR_TRASERO]) {
+        mapa_observar(mapa, pose, 3.14159265358979323846, distances[SENSOR_TRASERO] * 10.0,
+                      distances[SENSOR_TRASERO] < 20.0f);
+    }
 
     for (sensor = 0; sensor < SENSOR_CANTIDAD && sensor < cJSON_GetArraySize(sensors); ++sensor) {
         cJSON *reading = cJSON_GetArrayItem(sensors, sensor);
         if (!cJSON_IsObject(reading)) continue;
-        replace_item(reading, "distanceCm", cJSON_CreateNumber(distances[sensor]));
-        replace_item(reading, "obstacle", cJSON_CreateBool(distances[sensor] < 20.0f));
+        if (sensor_valid[sensor]) {
+            replace_item(reading, "distanceCm", cJSON_CreateNumber(distances[sensor]));
+            replace_item(reading, "obstacle", cJSON_CreateBool(distances[sensor] < 20.0f));
+        }
     }
 
     cJSON *reported_pose = cJSON_GetObjectItemCaseSensitive(reported, "pose");
@@ -192,7 +226,18 @@ static void *control_thread_main(void *argument) {
         nanosleep(&interval, NULL);
         if (!keep_running) break;
         pthread_mutex_lock(&state_mutex);
-        control_tick(context->state, &context->odometria, &context->mapa);
+        {
+            char *before = cJSON_PrintUnformatted(context->state);
+            if (!watchdog_stopped && monotonic_now_ns() - last_heartbeat_ns > WATCHDOG_TIMEOUT_NS) {
+                stop_state(context->state);
+                watchdog_stopped = true;
+            }
+            control_tick(context->state, &context->odometria, &context->mapa);
+            char *after = cJSON_PrintUnformatted(context->state);
+            if (before != NULL && after != NULL && strcmp(before, after) != 0) state_generation++;
+            free(before);
+            free(after);
+        }
         pthread_mutex_unlock(&state_mutex);
     }
     return NULL;
@@ -321,11 +366,15 @@ static void process_message(int client_socket, cJSON *state, const char *state_p
     pthread_mutex_lock(&state_mutex);
     type = cJSON_GetObjectItemCaseSensitive(request, "type");
     patch = cJSON_GetObjectItemCaseSensitive(request, "desired");
-    if (cJSON_IsString(type) && strcmp(type->valuestring, "get_state") == 0) {
+    if (cJSON_IsString(type) && strcmp(type->valuestring, "heartbeat") == 0) {
+        last_heartbeat_ns = monotonic_now_ns();
+        watchdog_stopped = false;
+    } else if (cJSON_IsString(type) && strcmp(type->valuestring, "get_state") == 0) {
         send_state(client_socket, state);
     } else if (cJSON_IsString(type) && strcmp(type->valuestring, "set_state") == 0 && cJSON_IsObject(patch)) {
         if (apply_desired_state(state, patch)) {
             if (!write_state(state_path, state)) perror("no se pudo guardar estado.json");
+            state_generation++;
             send_state(client_socket, state);
         }
     }
@@ -340,13 +389,17 @@ static void serve_client(int client_socket, cJSON *state, const char *state_path
         .fd = client_socket,
         .events = POLLIN,
     };
+    unsigned long last_sent_generation;
 
     pthread_mutex_lock(&state_mutex);
+    last_heartbeat_ns = monotonic_now_ns();
+    watchdog_stopped = false;
     if (!send_state(client_socket, state)) {
         pthread_mutex_unlock(&state_mutex);
         return;
     }
     pthread_mutex_unlock(&state_mutex);
+    last_sent_generation = state_generation;
     while (keep_running) {
         int poll_result = poll(&client_poll, 1, CONTROL_TICK_MS);
         char *line_start;
@@ -359,7 +412,10 @@ static void serve_client(int client_socket, cJSON *state, const char *state_path
         if (poll_result == 0) {
             bool pushed;
             pthread_mutex_lock(&state_mutex);
-            pushed = send_state(client_socket, state);
+            pushed = state_generation != last_sent_generation
+                ? send_state(client_socket, state)
+                : true;
+            if (pushed) last_sent_generation = state_generation;
             pthread_mutex_unlock(&state_mutex);
             if (!pushed) break;
             continue;
@@ -374,12 +430,19 @@ static void serve_client(int client_socket, cJSON *state, const char *state_path
         while ((newline = strchr(line_start, '\n')) != NULL) {
             *newline = '\0';
             if (*line_start != '\0') process_message(client_socket, state, state_path, line_start);
+            pthread_mutex_lock(&state_mutex);
+            last_sent_generation = state_generation;
+            pthread_mutex_unlock(&state_mutex);
             line_start = newline + 1;
         }
         used -= (size_t)(line_start - buffer);
         memmove(buffer, line_start, used);
         if (used == sizeof(buffer) - 1) used = 0;
     }
+    pthread_mutex_lock(&state_mutex);
+    stop_state(state);
+    state_generation++;
+    pthread_mutex_unlock(&state_mutex);
 }
 
 int main(int argc, char **argv) {
@@ -399,6 +462,7 @@ int main(int argc, char **argv) {
     }
     free(state_text);
     control.state = state;
+    last_heartbeat_ns = monotonic_now_ns();
     if (odometria_init(&control.odometria,
                        (odometria_config_t){.distancia_ruedas_mm = 200.0}) != 0) {
         fprintf(stderr, "no se pudo inicializar la odometria\n");
@@ -415,6 +479,19 @@ int main(int argc, char **argv) {
         fprintf(stderr, "no se pudo inicializar el mapa\n");
         cJSON_Delete(state);
         return EXIT_FAILURE;
+    }
+    {
+        cJSON *reported = cJSON_GetObjectItemCaseSensitive(state, "reported");
+        cJSON *pose = cJSON_GetObjectItemCaseSensitive(reported, "pose");
+        if (cJSON_IsObject(reported)) {
+            update_reported_map(reported, &control.mapa);
+            if (!cJSON_IsObject(pose)) pose = cJSON_AddObjectToObject(reported, "pose");
+            if (cJSON_IsObject(pose)) {
+                set_number(pose, "xMm", 0.0);
+                set_number(pose, "yMm", 0.0);
+                set_number(pose, "thetaRad", 0.0);
+            }
+        }
     }
 
     if (roombateca_control_init() != 0) {
