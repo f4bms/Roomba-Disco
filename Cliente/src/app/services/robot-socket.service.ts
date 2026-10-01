@@ -31,21 +31,29 @@ export interface DesiredStatePatch {
 @Injectable({ providedIn: 'root' })
 export class RobotSocketService {
 
+  private static readonly SERVER_ADDRESS_KEY = 'roomba.serverAddress';
+
   readonly status = signal<ConnectionStatus>('desconectado');
   readonly state = signal<RobotState | null>(null);
   readonly error = signal<string | null>(null);
+  readonly serverAddress = signal<string>(this.loadServerAddress());
   private socket: WebSocket | null = null;
+  private shouldReconnect = false;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
   connect() {
     if (typeof window === 'undefined') {
       return;
     }
+    this.shouldReconnect = true;
     if (this.socket && (this.socket.readyState === WebSocket.OPEN || this.socket.readyState === WebSocket.CONNECTING)) {
       return;
     }
 
-    const scheme = window.location.protocol === 'https:' ? 'wss' : 'ws';
-    const url = `${scheme}://${window.location.host}/ws`;
+    const url = this.buildWebSocketUrl();
+    if (url === null) {
+      return;
+    }
     const socket = new WebSocket(url);
     this.socket = socket;
     this.status.set('conectando');
@@ -73,6 +81,7 @@ export class RobotSocketService {
       if (this.socket === socket) {
         this.status.set('desconectado');
         this.socket = null;
+        this.scheduleReconnect();
       }
     };
     socket.onerror = () => {
@@ -110,10 +119,75 @@ export class RobotSocketService {
       && typeof (value as { message?: unknown }).message === 'string';
   }
 
+  setServerAddress(address: string) {
+    const trimmed = address.trim();
+    this.serverAddress.set(trimmed);
+    if (typeof localStorage !== 'undefined') {
+      if (trimmed) {
+        localStorage.setItem(RobotSocketService.SERVER_ADDRESS_KEY, trimmed);
+      } else {
+        localStorage.removeItem(RobotSocketService.SERVER_ADDRESS_KEY);
+      }
+    }
+  }
+
+  reconnect() {
+    this.shouldReconnect = true;
+    if (this.reconnectTimer !== null) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    if (this.socket !== null) {
+      const socket = this.socket;
+      this.socket = null;
+      socket.close();
+    }
+    this.connect();
+  }
+
   disconnect() {
+    this.shouldReconnect = false;
+    if (this.reconnectTimer !== null) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
     if (this.socket !== null) {
       this.socket.close();
       this.socket = null;
     }
+  }
+
+  private scheduleReconnect() {
+    if (!this.shouldReconnect || this.reconnectTimer !== null) {
+      return;
+    }
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      this.connect();
+    }, 2000);
+  }
+
+  private loadServerAddress(): string {
+    if (typeof localStorage === 'undefined') {
+      return '';
+    }
+    return localStorage.getItem(RobotSocketService.SERVER_ADDRESS_KEY) ?? '';
+  }
+
+  private buildWebSocketUrl(): string | null {
+    if (typeof window === 'undefined') {
+      return null;
+    }
+    const configured = this.serverAddress().trim();
+    const scheme = window.location.protocol === 'https:' ? 'wss' : 'ws';
+    if (configured === '') {
+      return `${scheme}://${window.location.host}/ws`;
+    }
+    if (configured.startsWith('ws://') || configured.startsWith('wss://')) {
+      const base = configured.replace(/\/+$/, '');
+      return base.endsWith('/ws') ? base : `${base}/ws`;
+    }
+    const host = /:\d+$/.test(configured) ? configured : `${configured}:8080`;
+    return `${scheme}://${host}/ws`;
   }
 }

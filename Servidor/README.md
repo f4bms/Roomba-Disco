@@ -1,6 +1,6 @@
 # Servidor web y WebSocket
 
-El servidor C usa CivetWeb vendorizado para entregar el cliente Angular compilado y el canal WebSocket desde el mismo proceso. No accede al Driver ni al hardware: transporta documentos JSON entre el Cliente y la capa Logica por un socket Unix local.
+El servidor C usa CivetWeb vendorizado para exponer el canal WebSocket que comunica al cliente remoto con la capa Logica. No accede al Driver ni al hardware: transporta documentos JSON entre el Cliente y la capa Logica por un socket Unix local. El cliente Angular es una aplicacion independiente que corre en otro dispositivo (laptop, PC) y se conecta por red a la Raspberry Pi.
 
 ## Compilar con CMake
 
@@ -11,22 +11,25 @@ cmake -S Servidor -B Servidor/build
 cmake --build Servidor/build
 ```
 
-El build compila el cliente Angular y genera el ejecutable en `Servidor/build/servidor`.
-
-Tambien se conserva un `Makefile` como atajo compatible para entornos que ya lo utilicen:
+Esto compila el servidor y `logica_simulador` sin necesidad de `npm`. El cliente ya no se compila ni se instala en la Pi. Si aun asi quieres empacar el cliente junto al servidor (despliegue monolitico opcional), activa la opcion:
 
 ```bash
-make -C Servidor
+cmake -S Servidor -B Servidor/build -DBUILD_CLIENT=ON
+cmake --build Servidor/build
 ```
 
 ## Ejecutar en desarrollo
 
+En la Raspberry Pi (o en la maquina de desarrollo) se levantan solo la logica y el servidor:
+
 ```bash
 ./Servidor/build/logica_simulador Logica/estado.json /tmp/roomba-logica.sock
-./Servidor/build/servidor 8080 "$PWD/Cliente/dist/scrap-e-controller/browser" /tmp/roomba-logica.sock
+./Servidor/build/servidor 8080 "" /tmp/roomba-logica.sock
 ```
 
-Abre `http://localhost:8080` en el navegador. El canal WebSocket se expone en `ws://localhost:8080/ws`.
+El segundo argumento es la raiz web opcional; con el cliente separado puede quedar vacio. El canal WebSocket se expone en `ws://<IP_DE_LA_PI>:8080/ws`.
+
+En el dispositivo del cliente se corre la aplicacion Angular por separado (`ng serve` o el bundle de `ng build`) y se escribe la direccion de la Pi en el campo de conexion del panel, por ejemplo `192.168.1.50:8080`.
 
 ## Instalar en la Raspberry Pi
 

@@ -25,16 +25,22 @@ add_subdirectory(
 set(CLIENT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../Cliente")
 set(CLIENT_DIST_DIR "${CLIENT_DIR}/dist/scrap-e-controller/browser")
 
-find_program(NPM_EXECUTABLE npm)
-if(NOT NPM_EXECUTABLE)
-    message(FATAL_ERROR "npm es necesario para compilar el cliente Angular")
-endif()
+# El cliente es una aplicacion independiente que corre fuera de la Raspberry Pi.
+# Solo se compila/instala junto al servidor cuando se pide explicitamente.
+option(BUILD_CLIENT "Compilar e instalar el cliente Angular junto al servidor" OFF)
 
-add_custom_target(cliente_web
-    COMMAND "${NPM_EXECUTABLE}" run build
-    WORKING_DIRECTORY "${CLIENT_DIR}"
-    COMMENT "Compilando el cliente Angular"
-)
+if(BUILD_CLIENT)
+    find_program(NPM_EXECUTABLE npm)
+    if(NOT NPM_EXECUTABLE)
+        message(FATAL_ERROR "npm es necesario para compilar el cliente Angular")
+    endif()
+
+    add_custom_target(cliente_web
+        COMMAND "${NPM_EXECUTABLE}" run build
+        WORKING_DIRECTORY "${CLIENT_DIR}"
+        COMMENT "Compilando el cliente Angular"
+    )
+endif()
 
 add_library(civetweb STATIC
     third_party/civetweb/src/civetweb.c
@@ -55,16 +61,59 @@ target_compile_definitions(civetweb PRIVATE
 target_link_libraries(civetweb PRIVATE pthread)
 
 add_executable(servidor servidor.c)
-add_dependencies(servidor cliente_web)
+if(BUILD_CLIENT)
+    add_dependencies(servidor cliente_web)
+endif()
 
 add_executable(logica_simulador ../Logica/logica.c)
-target_sources(logica_simulador PRIVATE ../Logica/roombateca_control.c)
+target_sources(logica_simulador PRIVATE
+    ../Logica/roombateca_control.c
+    ../Logica/odometria.c
+    ../Logica/mapa.c
+)
 target_include_directories(logica_simulador PRIVATE
     "${cjson_SOURCE_DIR}"
     "${CMAKE_CURRENT_SOURCE_DIR}/../Logica"
 )
-target_link_libraries(logica_simulador PRIVATE cjson roombateca)
+target_link_libraries(logica_simulador PRIVATE cjson roombateca pthread)
 target_compile_options(logica_simulador PRIVATE -Wall -Wextra -Wpedantic)
+
+enable_testing()
+add_executable(test_odometria
+    ../Logica/odometria.c
+    ../Logica/test_odometria.c
+)
+target_include_directories(test_odometria PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/../Biblioteca/include"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../Logica"
+)
+target_link_libraries(test_odometria PRIVATE m)
+target_compile_options(test_odometria PRIVATE -Wall -Wextra -Wpedantic)
+add_test(NAME odometria COMMAND test_odometria)
+
+add_executable(test_encoders_sim
+    ../Biblioteca/lib/motores.c
+    ../Biblioteca/lib/encoders.c
+    ../Logica/test_encoders_sim.c
+)
+target_include_directories(test_encoders_sim PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/../Biblioteca/include"
+)
+target_link_libraries(test_encoders_sim PRIVATE pthread)
+target_compile_options(test_encoders_sim PRIVATE -Wall -Wextra -Wpedantic)
+add_test(NAME encoders_sim COMMAND test_encoders_sim)
+
+add_executable(test_mapa
+    ../Logica/mapa.c
+    ../Logica/test_mapa.c
+)
+target_include_directories(test_mapa PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/../Biblioteca/include"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../Logica"
+)
+target_link_libraries(test_mapa PRIVATE m)
+target_compile_options(test_mapa PRIVATE -Wall -Wextra -Wpedantic)
+add_test(NAME mapa COMMAND test_mapa)
 
 target_include_directories(servidor PRIVATE
     third_party/civetweb/include
@@ -80,5 +129,7 @@ target_compile_options(servidor PRIVATE
 
 install(TARGETS servidor RUNTIME DESTINATION bin)
 install(TARGETS logica_simulador RUNTIME DESTINATION bin)
-install(DIRECTORY "${CLIENT_DIST_DIR}/" DESTINATION share/roomba-disco/www)
+if(BUILD_CLIENT)
+    install(DIRECTORY "${CLIENT_DIST_DIR}/" DESTINATION share/roomba-disco/www)
+endif()
 install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../Logica/estado.json" DESTINATION share/roomba-disco)
