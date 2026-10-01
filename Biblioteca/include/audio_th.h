@@ -6,32 +6,44 @@ extern "C" {
 #endif
 
 typedef enum {
-    AUDIO_DETENIDO = 0,
-    AUDIO_REPRODUCIENDO,
-    AUDIO_PAUSADO
+    AUDIO_STOP = 0,
+    AUDIO_PLAY,
+    AUDIO_PAUSA
 } audio_estado_t;
 
-/* Inicializa el subsistema de audio. Devuelve 0 en éxito, <0 en error. */
+/* Rutas absolutas hacia los .mp3 instalados por libroombateca_1.0.bb en
+ * ${datadir}/roomba-disco/audio/ (ver FILES:${PN} en esa receta), es
+ * decir /usr/share/roomba-disco/audio/ en el target.
+ * Se usan rutas absolutas y no relativas 
+ */
+#define AUDIO_DIR "/usr/share/roomba-disco/audio/"
+
+// Sonidos de notificacion
+#define AUDIO_INICIO_SYS    AUDIO_DIR "arranque.mp3"
+#define AUDIO_AUTO_MODE     AUDIO_DIR "pirin.mp3"
+#define AUDIO_ALERTA        AUDIO_DIR "alerta.mp3"
+#define AUDIO_MANUAL_MODE   AUDIO_DIR "ding.mp3"
+// Musica una pista por ahora
+#define AUDIO_MUSICA        AUDIO_DIR "MrTaxiCut.mp3"
+
+// Inicializa el sys de audio. 
 int audio_control_init(void);
 
-/* Detiene la reproducción y libera los recursos de audio. */
+//Detiene sonidos y libera los recursos
 void audio_control_cleanup(void);
 
-/* Reproduce el MP3 en path en un hilo aparte (no bloquea al llamador),
- * mezclado sobre la música si la hay. Para sonidos cortos. */
+//* Sonidos de notificación
 void trigger_notification_audio(const char *path);
 
-/* Canal de música: una pista a la vez; audio_play reemplaza la actual.
- * Devuelven 0 o -errno. */
+// Canal de música: una pista a la vez 
+//con audio_play(cancion) reemplaza la actual, ahorita solo hay una pista
 int audio_play(const char *path);
 int audio_pause(void);
 int audio_resume(void);
 int audio_stop(void);
-
-/* AUDIO_DETENIDO también cuando la pista terminó sola. */
 audio_estado_t audio_get_state(void);
 
-/* volumen en [0, 100]. */
+//volumen: [0, 100]
 int audio_set_volume(int volumen);
 int audio_get_volume(void);
 
