@@ -15,12 +15,6 @@ static void esperar_milisegundos(long milisegundos) {
     nanosleep(&espera, NULL);
 }
 
-static encoder_lectura_t leer(encoder_id_t id) {
-    encoder_lectura_t lectura;
-    assert(encoder_leer(id, &lectura) == 0);
-    return lectura;
-}
-
 int main(void) {
     encoder_lectura_t izquierda_inicial;
     encoder_lectura_t derecha_inicial;
@@ -34,28 +28,34 @@ int main(void) {
     assert(motor_control_init() == 0);
     assert(encoders_init() == 0);
 
-    izquierda_inicial = leer(ENCODER_IZQUIERDO);
-    derecha_inicial = leer(ENCODER_DERECHO);
+    encoder_lectura_t iniciales[ENCODER_CANTIDAD];
+    encoder_lectura_t conjuntos[ENCODER_CANTIDAD];
+    assert(encoders_leer_todos(iniciales) == 0);
+    izquierda_inicial = iniciales[ENCODER_IZQUIERDO];
+    derecha_inicial = iniciales[ENCODER_DERECHO];
     assert(motor_izquierdo_set(100) == 0);
     assert(motor_derecho_set(100) == 0);
     esperar_milisegundos(100);
-    izquierda_avance = leer(ENCODER_IZQUIERDO);
-    derecha_avance = leer(ENCODER_DERECHO);
+    assert(encoders_leer_todos(conjuntos) == 0);
+    izquierda_avance = conjuntos[ENCODER_IZQUIERDO];
+    derecha_avance = conjuntos[ENCODER_DERECHO];
     assert(izquierda_avance.distancia_mm - izquierda_inicial.distancia_mm > 20.0);
     assert(derecha_avance.distancia_mm - derecha_inicial.distancia_mm > 20.0);
 
     assert(motor_izquierdo_set(100) == 0);
     assert(motor_derecho_set(-100) == 0);
     esperar_milisegundos(100);
-    izquierda_giro = leer(ENCODER_IZQUIERDO);
-    derecha_giro = leer(ENCODER_DERECHO);
+    assert(encoders_leer_todos(conjuntos) == 0);
+    izquierda_giro = conjuntos[ENCODER_IZQUIERDO];
+    derecha_giro = conjuntos[ENCODER_DERECHO];
     assert(izquierda_giro.distancia_mm > izquierda_avance.distancia_mm);
     assert(derecha_giro.distancia_mm < derecha_avance.distancia_mm);
 
     assert(motores_frenar() == 0);
     esperar_milisegundos(100);
-    izquierda_freno = leer(ENCODER_IZQUIERDO);
-    derecha_freno = leer(ENCODER_DERECHO);
+    assert(encoders_leer_todos(conjuntos) == 0);
+    izquierda_freno = conjuntos[ENCODER_IZQUIERDO];
+    derecha_freno = conjuntos[ENCODER_DERECHO];
     assert(fabs(izquierda_freno.distancia_mm - izquierda_giro.distancia_mm) < 20.0);
     assert(fabs(derecha_freno.distancia_mm - derecha_giro.distancia_mm) < 20.0);
 

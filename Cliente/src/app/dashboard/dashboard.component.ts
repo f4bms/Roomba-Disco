@@ -42,7 +42,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
   sensors: SensorReading[] = [
     { id: 1, distance: null, obstacle: null },
     { id: 2, distance: null, obstacle: null },
-    { id: 3, distance: null, obstacle: null },
   ];
   map = { width: 8, height: 6, cells: Array.from({ length: 48 }, () => 0) };
 

@@ -30,9 +30,7 @@ void odometria_reset(odometria_t *odometria) {
     odometria->tiene_lectura_anterior = 0;
 }
 
-int odometria_actualizar(odometria_t *odometria,
-                         const encoder_lectura_t *izquierdo,
-                         const encoder_lectura_t *derecho) {
+int odometria_actualizar(odometria_t *odometria, const encoder_lectura_t *izquierdo, const encoder_lectura_t *derecho) {
     double delta_izquierdo_mm;
     double delta_derecho_mm;
     double avance_mm;

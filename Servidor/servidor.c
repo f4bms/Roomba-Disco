@@ -247,6 +247,8 @@ int main(int argc, char **argv) {
 
     while (keep_running) {
         sleep(1);
+        static const char heartbeat[] = "{\"type\":\"heartbeat\"}";
+        send_to_logic(heartbeat, sizeof(heartbeat) - 1);
     }
 
     pthread_mutex_lock(&logic_mutex);

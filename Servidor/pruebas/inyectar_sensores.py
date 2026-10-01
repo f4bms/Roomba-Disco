@@ -10,11 +10,10 @@ from pathlib import Path
 def main():
     parser = argparse.ArgumentParser(description="Modificar los sensores simulados de Lógica sin reiniciarla")
     parser.add_argument("frontal", type=float, help="distancia frontal en cm")
-    parser.add_argument("izquierdo", type=float, help="distancia izquierda en cm")
-    parser.add_argument("derecho", type=float, help="distancia derecha en cm")
+    parser.add_argument("trasero", type=float, help="distancia trasera en cm")
     parser.add_argument("--file", type=Path, default=Path("/tmp/roomba-sensores.txt"))
     args = parser.parse_args()
-    distances = (args.frontal, args.izquierdo, args.derecho)
+    distances = (args.frontal, args.trasero)
     if any(not math.isfinite(value) or not 2 <= value <= 400 for value in distances):
         parser.error("las distancias deben estar entre 2 y 400 cm")
 
@@ -27,7 +26,7 @@ def main():
     finally:
         if os.path.exists(temporary_path):
             os.unlink(temporary_path)
-    print(f"Sensores frontal/izquierdo/derecho: {distances} cm -> {path}")
+    print(f"Sensores frontal/trasero: {distances} cm -> {path}")
 
 
 if __name__ == "__main__":

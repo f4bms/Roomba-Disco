@@ -35,10 +35,14 @@ void motor_control_cleanup(void) {
 }
 
 int motor_izquierdo_set(int velocidad) {
-    if (!inicializado || !velocidad_valida(velocidad)) {
+    if (!velocidad_valida(velocidad)) {
         return -1;
     }
      pthread_mutex_lock(&motores_mutex);
+	 if (!inicializado) {
+		 pthread_mutex_unlock(&motores_mutex);
+		 return -1;
+	 }
     velocidad_izquierda = velocidad;
      pthread_mutex_unlock(&motores_mutex);
     printf("[motores] izquierdo = %d\n", velocidad);
@@ -46,10 +50,14 @@ int motor_izquierdo_set(int velocidad) {
 }
 
 int motor_derecho_set(int velocidad) {
-    if (!inicializado || !velocidad_valida(velocidad)) {
+    if (!velocidad_valida(velocidad)) {
         return -1;
     }
      pthread_mutex_lock(&motores_mutex);
+	 if (!inicializado) {
+		 pthread_mutex_unlock(&motores_mutex);
+		 return -1;
+	 }
     velocidad_derecha = velocidad;
      pthread_mutex_unlock(&motores_mutex);
     printf("[motores] derecho = %d\n", velocidad);
