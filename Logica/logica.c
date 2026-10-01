@@ -357,6 +357,11 @@ static void serve_client(int client_socket, cJSON *state, const char *state_path
             break;
         }
         if (poll_result == 0) {
+            bool pushed;
+            pthread_mutex_lock(&state_mutex);
+            pushed = send_state(client_socket, state);
+            pthread_mutex_unlock(&state_mutex);
+            if (!pushed) break;
             continue;
         }
         if ((client_poll.revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) break;
