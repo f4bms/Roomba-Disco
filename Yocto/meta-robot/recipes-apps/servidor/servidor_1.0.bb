@@ -14,8 +14,8 @@ SRC_URI = "file://servidor.c \
 
 S = "${WORKDIR}"
 
-# Sirve los archivos de la receta cliente y habla con la lógica
-RDEPENDS:${PN} = "cliente logica"
+# El cliente corre en un dispositivo externo; la Pi solo necesita la logica.
+RDEPENDS:${PN} = "logica"
 
 CIVETWEB_DEFS = "-DUSE_WEBSOCKET -DNO_SSL -DNO_CGI -DNO_LUA -DNO_DUKTAPE"
 

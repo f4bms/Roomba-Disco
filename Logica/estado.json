@@ -1,12 +1,12 @@
 {
 	"type":	"state",
 	"protocolVersion":	1,
-	"revision":	4392,
+	"revision":	4701,
 	"desired":	{
 		"mode":	"MANUAL",
 		"motion":	{
 			"direction":	"STOP",
-			"speed":	356
+			"speed":	300
 		},
 		"audio":	{
 			"action":	"PLAY",
@@ -18,7 +18,7 @@
 		"mode":	"MANUAL",
 		"motion":	{
 			"direction":	"STOP",
-			"speed":	356
+			"speed":	300
 		},
 		"audio":	{
 			"status":	"playing",
@@ -28,21 +28,22 @@
 		},
 		"sensors":	[{
 				"id":	1,
-				"distanceCm":	42.5,
+				"distanceCm":	42,
 				"obstacle":	false
 			}, {
 				"id":	2,
-				"distanceCm":	18.2,
-				"obstacle":	true
-			}, {
-				"id":	3,
-				"distanceCm":	35,
+				"distanceCm":	42,
 				"obstacle":	false
 			}],
 		"map":	{
 			"width":	8,
 			"height":	6,
-			"cells":	[0, 0, 0, 0, 0, 0, 2, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 2, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+			"cells":	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+		},
+		"pose":	{
+			"xMm":	-239.0922437810629,
+			"yMm":	-213.48459721444752,
+			"thetaRad":	2.1046352190000017
 		}
 	}
 }

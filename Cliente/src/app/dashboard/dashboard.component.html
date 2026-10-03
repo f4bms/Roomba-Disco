@@ -1,7 +1,17 @@
 <div class="dashboard">
 
-  <!-- Estado de conexion con el servidor (temporal para pruebas) -->
-  <div class="connection-bar">Servidor: {{ connectionStatus() }}</div>
+  <!-- Conexion con la Raspberry Pi (cliente remoto) -->
+  <div class="connection-bar">
+    <span class="connection-status">Servidor: {{ connectionStatus() }}</span>
+    <input
+      class="server-input"
+      type="text"
+      placeholder="IP de la Raspberry (ej. 192.168.1.50:8080)"
+      [value]="serverAddress()"
+      #serverField
+      (keyup.enter)="applyServer(serverField.value)">
+    <button type="button" (click)="applyServer(serverField.value)">Conectar</button>
+  </div>
 
   <!-- Columna izquierda -->
   <div class="left-column">

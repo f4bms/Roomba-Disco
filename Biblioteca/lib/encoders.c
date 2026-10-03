@@ -206,19 +206,39 @@ static double velocidad_mm_s(const encoder_t *e, uint64_t t) {
     return e->signo * 2.0 * ENCODER_MM_POR_PULSO * 1e9 / (double)periodo;
 }
 
+/* Con encoders_mutex tomado. */
+static void copiar_lectura(const encoder_t *e, uint64_t t, encoder_lectura_t *lectura) {
+    lectura->pulsos = e->pulsos;
+    lectura->distancia_mm = (double)e->pulsos * ENCODER_MM_POR_PULSO;
+    lectura->velocidad_mm_s = velocidad_mm_s(e, t);
+    lectura->ultimo_pulso_ns = e->t_ultimo_ns;
+}
+
 int encoder_leer(encoder_id_t id, encoder_lectura_t *lectura) {
     if ((int)id < 0 || id >= ENCODER_CANTIDAD || !lectura) {
         return -EINVAL;
     }
     pthread_mutex_lock(&encoders_mutex);
-    uint64_t t = ahora_ns();
     int rv = -ENODEV;
     if (inicializado) {
-        const encoder_t *e = &encoders[id];
-        lectura->pulsos = e->pulsos;
-        lectura->distancia_mm = (double)e->pulsos * ENCODER_MM_POR_PULSO;
-        lectura->velocidad_mm_s = velocidad_mm_s(e, t);
-        lectura->ultimo_pulso_ns = e->t_ultimo_ns;
+        copiar_lectura(&encoders[id], ahora_ns(), lectura);
+        rv = 0;
+    }
+    pthread_mutex_unlock(&encoders_mutex);
+    return rv;
+}
+
+int encoders_leer_todos(encoder_lectura_t lecturas[ENCODER_CANTIDAD]) {
+    if (!lecturas) {
+        return -EINVAL;
+    }
+    pthread_mutex_lock(&encoders_mutex);
+    int rv = -ENODEV;
+    if (inicializado) {
+        uint64_t t = ahora_ns();
+        for (int i = 0; i < ENCODER_CANTIDAD; i++) {
+            copiar_lectura(&encoders[i], t, &lecturas[i]);
+        }
         rv = 0;
     }
     pthread_mutex_unlock(&encoders_mutex);

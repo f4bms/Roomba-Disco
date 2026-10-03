@@ -30,6 +30,9 @@ void encoders_cleanup(void);
 /* Seguro entre hilos. Devuelve 0 o -errno. */
 int encoder_leer(encoder_id_t id, encoder_lectura_t *lectura);
 
+/* Lee ambos encoders con una sola actualización temporal. */
+int encoders_leer_todos(encoder_lectura_t lecturas[ENCODER_CANTIDAD]);
+
 /* Pone a cero los contadores de ambas ruedas. */
 int encoders_reset(void);
 
