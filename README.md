@@ -177,7 +177,7 @@ nano conf/local.conf
 Agregar al final del archivo local.conf para el sistema:
 ```text
 # [ESPECIFICA EL HARDWARE OBJETIVO]
-MACHINE ?= "raspberrypi4"
+MACHINE ?= "raspberrypi4-64"
 CONF_VERSION = "2"
 
 # [OPTIMIZACIÓN DE RECURSOS DEL HOST]
@@ -203,8 +203,7 @@ KERNEL_VERSION_SANITY_SKIP = "1"
 LICENSE_FLAGS_ACCEPTED:append = " synaptics-killswitch"
 LICENSE_FLAGS_ACCEPTED:append = " commercial"
 
-# [AUDIO Y MULTIMEDIA] Habilita el firmware de audio analógico de la Pi 4 e instala ALSA + mpg123
-ENABLE_AUDIO = "1"
+# [AUDIO Y MULTIMEDIA] Instala ALSA + mpg123
 IMAGE_INSTALL:append = " alsa-lib alsa-utils mpg123"
 
 # [MOTORES] Invoca el Device Tree Overlay para activar 2 canales PWM nativos por hardware
@@ -223,7 +222,7 @@ bitbake rpi-test-image
 
 ## 👨‍🍳 3. Estructura de la Receta Propia (`libroombateca_1.0.bb`)
 
-Receta modular en CMake y enlazada de forma externa al host.
+Receta modular en CMake; toma las fuentes de `Biblioteca/` mediante `FILESEXTRAPATHS`. Extracto (el archivo completo está en la capa).
 
 **Ubicación del archivo en la capa:** `Yocto/meta-robot/recipes-apps/libroombateca/libroombateca_1.0.bb`
 
@@ -233,19 +232,28 @@ DESCRIPTION = "Metadatos en CMake cross-compile el control de perifericos e hilo
 LICENSE = "MIT"
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302"
 
-#Clase CMake y la clase de dev local offline
-inherit cmake externalsrc
+inherit cmake
 
-#Ruta local donde va a estar el codigo
-EXTERNALSRC = "/home/irmunoz/Taller4/cfiles/libroombateca"
+# gpio_control.c enlaza contra libgpiod (API v2, char device)
+DEPENDS += "libgpiod"
 
-#Evita que Yocto busque parches en subcarpetas locales de metadatos
-EXTERNALSRC_BUILD = "/home/irmunoz/Taller4/poky-scarthgap-5.0.15/rpi4/tmp/work/raspberrypi4-poky-linux-gnueabi/libroombateca/1.0-r0/build"
+# El código de Biblioteca/ vive fuera de esta capa, en el mismo repo
+FILESEXTRAPATHS:prepend := "${THISDIR}/../../../../Biblioteca:"
 
-#Indica a Yocto que empaque la biblioteca compartida (.so) y headers (.h)
-FILES:{PN} += "{libdir}/lib*.so"
-FILES:{PN} += "{includedir}/.h"
-FILES:{PN} += "{datadir}/roomba-disco/audio/.mp3"
+SRC_URI = "file://CMakeLists.txt \
+           file://include \
+           file://lib \
+           file://audio \
+"
+
+S = "${WORKDIR}"
+
+# audio_th.c reproduce los mp3 invocando mpg123
+RDEPENDS:${PN} = "mpg123"
+
+FILES:${PN} = "${libdir}/lib*.so"
+FILES:${PN} += "${includedir}/*.h"
+FILES:${PN} += "${datadir}/roomba-disco/audio/*.mp3"
 ```
 
 ---
@@ -254,12 +262,12 @@ FILES:{PN} += "{datadir}/roomba-disco/audio/.mp3"
 
 ### Instalación del SDK Cruzado
 El SDK generado por Yocto se encuentra instalado en la ruta fija del Host:
-`/opt/poky/5.0.20/`
+`/opt/poky/5.0.20/` (ruta por defecto del instalador; puede cambiarse con `-d`).
 
 ### Carga del Entorno de Compilación
 Cada vez que se abra una terminal nueva para compilar código de forma manual o local, se debe ejecutar el script para inicializar variables:
 ```bash
-source /opt/poky/5.0.20/environment-setup-cortexa7t2hf-neon-vfpv4-poky-linux-gnueabi
+source /opt/poky/5.0.20/environment-setup-cortexa72-poky-linux
 ```
 
 ### Validación Corta del Entorno
@@ -267,7 +275,7 @@ source /opt/poky/5.0.20/environment-setup-cortexa7t2hf-neon-vfpv4-poky-linux-gnu
   ```text
   bash: echo $CC
   ```
-Al ejecutar `echo $CC` se demuestra que el compilador apunta al toolchain cruzado de ARM, este se describe en su salida: `arm-poky-linux-gnueabi-gcc -mthumb -mfpu=neon-vfpv4 -mfloat-abi=hard -mcpu=cortex-a7 -fstack-protector-strong -O2 -D_FORTIFY_SOURCE=2 -Wformat -Wformat-security -Werror=format-security -D_TIME_BITS=64 -D_FILE_OFFSET_BITS=64 --sysroot=/opt/poky/5.0.20/sysroots/cortexa7t2hf-neon-vfpv4-poky-linux-gnueabi`
+Al ejecutar `echo $CC` se demuestra que el compilador apunta al toolchain cruzado de ARM, este se describe en su salida: `aarch64-poky-linux-gcc -mcpu=cortex-a72+crc -mbranch-protection=standard -fstack-protector-strong -O2 -D_FORTIFY_SOURCE=2 -Wformat -Wformat-security -Werror=format-security --sysroot=/opt/poky/5.0.20/sysroots/cortexa72-poky-linux`
 
 * **Compilación Manual de Prueba:**
   ```bash
@@ -280,7 +288,7 @@ Al ejecutar `echo $CC` se demuestra que el compilador apunta al toolchain cruzad
 * **Emulación con QEMU:** Para probar el binario localmente sin la placa física:
   ```bash
   sudo apt-get install qemu-user
-  qemu-arm -L $SDKTARGETSYSROOT ./test_arm
+  qemu-aarch64 -L $SDKTARGETSYSROOT ./test_arm
 
   # Salida: ~~~¡Genial! Prueba sencilla de Roomba-disco desde la Raspberry Pi 4~~~
   ```
@@ -346,8 +354,8 @@ Summary: There were 2 WARNING messages.
 Abre una terminal, ir donde se descargó el instalador .sh y ejecutar con permisos de administrador:
 
 ```bash
-chmod +x poky-glibc-x86_64-rpi-test-image-*.sh
-sudo ./poky-glibc-x86_64-rpi-test-image-*.sh
+chmod +x poky-glibc-x86_64-core-image-minimal-cortexa72-raspberrypi4-64-toolchain-5.0.20.sh
+sudo ./poky-glibc-x86_64-core-image-minimal-cortexa72-raspberrypi4-64-toolchain-5.0.20.sh
 ```
 
 Cuando pregunte la ruta de instalación, darle Enter para aceptar la ruta por default (`/opt/poky/5.0.20/`).
@@ -371,7 +379,7 @@ Con eso debería poder entrar como admin a root sin contraseña.
 
 **Probar el .c de sonido con hilos de ejemplo**
 
-Cargar el entorno de cross-compile en los 64 bits que cambiamos:
+Cargar el entorno de cross-compile (64 bits):
 
 ```bash
 source /opt/poky/5.0.20/environment-setup-cortexa72-poky-linux
@@ -396,6 +404,5 @@ export LD_LIBRARY_PATH=/usr/lib
 el_test
 ```
 
-Guía paso a paso (instalar el SDK, flashear la imagen en una Pi, y probar la biblioteca
-por SSH con audio real): ver el **Anexo** en
-[`Yocto/README.md`](Yocto/README.md#anexo--guía-rápida-para-probar-el-entorno-en-una-compu-nueva).
+Para generar el SDK desde cero y para iterar sobre la Pi corriendo con `devtool` (sin
+reflashear), ver [`Yocto/README.md`](Yocto/README.md).
