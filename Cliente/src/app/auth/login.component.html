@@ -1,0 +1,44 @@
+<div class="login-page">
+  <mat-card appearance="outlined" class="login-card">
+    <mat-card-header>
+      <mat-card-title>Roomba-Disco</mat-card-title>
+      <mat-card-subtitle>Inicio de sesión</mat-card-subtitle>
+    </mat-card-header>
+
+    <mat-card-content>
+      <form (ngSubmit)="submit()">
+        <div class="server-row">
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>Servidor (IP:puerto)</mat-label>
+            <input matInput name="server" [value]="socketAddress()" (change)="onServerChange($event)"
+                   placeholder="192.168.1.50:8080">
+          </mat-form-field>
+        </div>
+
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>Usuario</mat-label>
+          <input matInput name="user" [(ngModel)]="user" autocomplete="username" required>
+        </mat-form-field>
+
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>Contraseña</mat-label>
+          <input matInput name="password" type="password" [(ngModel)]="password"
+                 autocomplete="current-password" required>
+        </mat-form-field>
+
+        @if (error) {
+          <p class="error" role="alert">{{ error }}</p>
+        }
+
+        <button mat-raised-button color="primary" type="submit" class="full-width"
+                [disabled]="busy || user.trim() === '' || password === ''">
+          @if (busy) {
+            <mat-progress-spinner diameter="20" mode="indeterminate"></mat-progress-spinner>
+          } @else {
+            Ingresar
+          }
+        </button>
+      </form>
+    </mat-card-content>
+  </mat-card>
+</div>

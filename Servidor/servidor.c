@@ -12,15 +12,28 @@
 #include <unistd.h>
 
 #include "civetweb.h"
+#include "cJSON.h"
+#include "auth.h"
 
 #define DEFAULT_PORT "8080"
 #define DEFAULT_WEB_ROOT "../Cliente/dist/scrap-e-controller/browser"
 #define DEFAULT_LOGIC_SOCKET "/tmp/roomba-logica.sock"
+#define DEFAULT_USERS_FILE "usuarios.conf"
 #define MAX_CLIENTS 16
 #define MESSAGE_CAPACITY (256 * 1024)
 
+/* Estado por conexion WebSocket: una sesion solo habla con Logica tras autenticar. */
+typedef struct {
+    struct mg_connection *connection;
+    bool authenticated;
+    bool has_challenge;
+    uint8_t challenge[SHA256_DIGEST_LENGTH];
+    uint8_t verifier[SHA256_DIGEST_LENGTH];
+} client_slot_t;
+
 static volatile sig_atomic_t keep_running = 1;
-static struct mg_connection *websocket_clients[MAX_CLIENTS];
+static client_slot_t clients[MAX_CLIENTS];
+static auth_store_t user_store;
 static pthread_mutex_t clients_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t logic_mutex = PTHREAD_MUTEX_INITIALIZER;
 static int logic_socket = -1;
@@ -29,6 +42,19 @@ static const char *logic_socket_path = DEFAULT_LOGIC_SOCKET;
 static void stop_server(int signal_number) {
     (void)signal_number;
     keep_running = 0;
+}
+
+/* Busca el slot de una conexion. Llamar con clients_mutex tomado. */
+static client_slot_t *find_slot(const struct mg_connection *connection) {
+    size_t index;
+    for (index = 0; index < MAX_CLIENTS; ++index) {
+        if (clients[index].connection == connection) return &clients[index];
+    }
+    return NULL;
+}
+
+static void send_json_text(struct mg_connection *connection, const char *text) {
+    mg_websocket_write(connection, MG_WEBSOCKET_OPCODE_TEXT, text, strlen(text));
 }
 
 static const char *default_web_root(char web_root[PATH_MAX]) {
@@ -64,8 +90,10 @@ static void websocket_ready(struct mg_connection *connection, void *callback_dat
 
     pthread_mutex_lock(&clients_mutex);
     for (index = 0; index < MAX_CLIENTS; ++index) {
-        if (websocket_clients[index] == NULL) {
-            websocket_clients[index] = connection;
+        if (clients[index].connection == NULL) {
+            clients[index].connection = connection;
+            clients[index].authenticated = false;
+            clients[index].has_challenge = false;
             break;
         }
     }
@@ -95,8 +123,8 @@ static void broadcast_to_clients(const char *data, size_t data_length) {
     size_t index;
     pthread_mutex_lock(&clients_mutex);
     for (index = 0; index < MAX_CLIENTS; ++index) {
-        if (websocket_clients[index] != NULL) {
-            mg_websocket_write(websocket_clients[index], MG_WEBSOCKET_OPCODE_TEXT, data, data_length);
+        if (clients[index].connection != NULL && clients[index].authenticated) {
+            mg_websocket_write(clients[index].connection, MG_WEBSOCKET_OPCODE_TEXT, data, data_length);
         }
     }
     pthread_mutex_unlock(&clients_mutex);
@@ -165,19 +193,143 @@ static void *logic_reader(void *callback_data) {
     return NULL;
 }
 
+static void handle_auth_init(struct mg_connection *connection, const cJSON *message) {
+    const cJSON *user = cJSON_GetObjectItemCaseSensitive(message, "user");
+    const auth_user_t *entry;
+    client_slot_t *slot;
+    uint8_t challenge[SHA256_DIGEST_LENGTH];
+    uint8_t salt[AUTH_SALT_LENGTH];
+    char salt_hex[AUTH_SALT_LENGTH * 2 + 1];
+    char challenge_hex[SHA256_DIGEST_LENGTH * 2 + 1];
+    char response[160];
+
+    if (!cJSON_IsString(user) || auth_random_bytes(challenge, sizeof(challenge)) != 0) {
+        send_json_text(connection, "{\"type\":\"auth_result\",\"ok\":false}");
+        return;
+    }
+
+    /* Usuario desconocido recibe un salt señuelo para no revelar su ausencia. */
+    entry = auth_store_find(&user_store, user->valuestring);
+    if (entry != NULL) {
+        memcpy(salt, entry->salt, sizeof(salt));
+    } else if (auth_random_bytes(salt, sizeof(salt)) != 0) {
+        send_json_text(connection, "{\"type\":\"auth_result\",\"ok\":false}");
+        return;
+    }
+
+    pthread_mutex_lock(&clients_mutex);
+    slot = find_slot(connection);
+    if (slot != NULL) {
+        memcpy(slot->challenge, challenge, sizeof(challenge));
+        if (entry != NULL) {
+            memcpy(slot->verifier, entry->verifier, sizeof(slot->verifier));
+        } else {
+            auth_random_bytes(slot->verifier, sizeof(slot->verifier));
+        }
+        slot->has_challenge = true;
+        slot->authenticated = false;
+    }
+    pthread_mutex_unlock(&clients_mutex);
+
+    auth_hex_encode(salt, sizeof(salt), salt_hex, sizeof(salt_hex));
+    auth_hex_encode(challenge, sizeof(challenge), challenge_hex, sizeof(challenge_hex));
+    snprintf(response, sizeof(response),
+             "{\"type\":\"auth_challenge\",\"salt\":\"%s\",\"challenge\":\"%s\"}",
+             salt_hex, challenge_hex);
+    send_json_text(connection, response);
+}
+
+static void handle_auth_response(struct mg_connection *connection, const cJSON *message) {
+    const cJSON *response = cJSON_GetObjectItemCaseSensitive(message, "response");
+    uint8_t response_bytes[SHA256_DIGEST_LENGTH];
+    uint8_t expected[SHA256_DIGEST_LENGTH];
+    uint8_t verifier[SHA256_DIGEST_LENGTH];
+    uint8_t challenge[SHA256_DIGEST_LENGTH];
+    size_t response_length = 0;
+    client_slot_t *slot;
+    bool have_challenge = false;
+    bool ok = false;
+
+    if (!cJSON_IsString(response)
+            || auth_hex_decode(response->valuestring, response_bytes, sizeof(response_bytes), &response_length) != 0
+            || response_length != SHA256_DIGEST_LENGTH) {
+        send_json_text(connection, "{\"type\":\"auth_result\",\"ok\":false}");
+        return;
+    }
+
+    pthread_mutex_lock(&clients_mutex);
+    slot = find_slot(connection);
+    if (slot != NULL && slot->has_challenge) {
+        memcpy(verifier, slot->verifier, sizeof(verifier));
+        memcpy(challenge, slot->challenge, sizeof(challenge));
+        have_challenge = true;
+    }
+    pthread_mutex_unlock(&clients_mutex);
+
+    if (have_challenge) {
+        auth_compute_response(verifier, challenge, expected);
+        ok = auth_bytes_equal(expected, response_bytes, SHA256_DIGEST_LENGTH);
+    }
+
+    pthread_mutex_lock(&clients_mutex);
+    slot = find_slot(connection);
+    if (slot != NULL) {
+        slot->has_challenge = false;
+        slot->authenticated = ok;
+    }
+    pthread_mutex_unlock(&clients_mutex);
+
+    send_json_text(connection, ok
+        ? "{\"type\":\"auth_result\",\"ok\":true}"
+        : "{\"type\":\"auth_result\",\"ok\":false}");
+}
+
+static bool connection_is_authenticated(const struct mg_connection *connection) {
+    client_slot_t *slot;
+    bool authenticated;
+
+    pthread_mutex_lock(&clients_mutex);
+    slot = find_slot(connection);
+    authenticated = slot != NULL && slot->authenticated;
+    pthread_mutex_unlock(&clients_mutex);
+    return authenticated;
+}
+
 static int websocket_data(struct mg_connection *connection,
                           int bits,
                           char *data,
                           size_t data_length,
                           void *callback_data) {
+    cJSON *message;
+    const cJSON *type;
     (void)callback_data;
 
-    if ((bits & 0x0F) == MG_WEBSOCKET_OPCODE_TEXT) {
-        if (data_length >= MESSAGE_CAPACITY || !send_to_logic(data, data_length)) {
-            static const char unavailable[] = "{\"type\":\"error\",\"message\":\"Logica no disponible\"}";
-            mg_websocket_write(connection, MG_WEBSOCKET_OPCODE_TEXT, unavailable, sizeof(unavailable) - 1);
-        }
+    if ((bits & 0x0F) != MG_WEBSOCKET_OPCODE_TEXT) return 1;
+
+    if (data_length >= MESSAGE_CAPACITY) {
+        send_json_text(connection, "{\"type\":\"error\",\"message\":\"mensaje demasiado grande\"}");
+        return 1;
     }
+
+    message = cJSON_ParseWithLength(data, data_length);
+    type = message != NULL ? cJSON_GetObjectItemCaseSensitive(message, "type") : NULL;
+    if (!cJSON_IsString(type)) {
+        send_json_text(connection, "{\"type\":\"error\",\"message\":\"mensaje invalido\"}");
+        cJSON_Delete(message);
+        return 1;
+    }
+
+    if (strcmp(type->valuestring, "auth_init") == 0) {
+        handle_auth_init(connection, message);
+    } else if (strcmp(type->valuestring, "auth_response") == 0) {
+        handle_auth_response(connection, message);
+    } else if (!connection_is_authenticated(connection)) {
+        send_json_text(connection, "{\"type\":\"error\",\"message\":\"no autenticado\"}");
+    } else if (!send_to_logic(data, data_length)) {
+        send_json_text(connection, "{\"type\":\"error\",\"message\":\"Logica no disponible\"}");
+    }
+
+    cJSON_Delete(message);
     return 1;
 }
 
@@ -187,7 +339,11 @@ static void websocket_close(const struct mg_connection *connection, void *callba
 
     pthread_mutex_lock(&clients_mutex);
     for (index = 0; index < MAX_CLIENTS; ++index) {
-        if (websocket_clients[index] == connection) websocket_clients[index] = NULL;
+        if (clients[index].connection == connection) {
+            clients[index].connection = NULL;
+            clients[index].authenticated = false;
+            clients[index].has_challenge = false;
+        }
     }
     pthread_mutex_unlock(&clients_mutex);
     printf("cliente desconectado\n");
@@ -212,6 +368,11 @@ int main(int argc, char **argv) {
     signal(SIGTERM, stop_server);
     signal(SIGPIPE, SIG_IGN);
     logic_socket_path = argc > 3 ? argv[3] : DEFAULT_LOGIC_SOCKET;
+
+    const char *users_file = argc > 4 ? argv[4] : DEFAULT_USERS_FILE;
+    if (auth_store_load(users_file, &user_store) != 0) {
+        fprintf(stderr, "aviso: no se pudo leer %s; se rechazaran todos los inicios de sesion\n", users_file);
+    }
 
     if (mg_init_library(MG_FEATURES_WEBSOCKET) == 0) {
         fprintf(stderr, "no se pudo inicializar CivetWeb\n");
@@ -243,6 +404,7 @@ int main(int argc, char **argv) {
     printf("Servidor disponible en http://0.0.0.0:%s\n", options[1]);
     printf("WebSocket disponible en ws://0.0.0.0:%s/ws\n", options[1]);
     printf("IPC de Logica en %s\n", logic_socket_path);
+    printf("Usuarios cargados desde %s: %zu\n", users_file, user_store.count);
     fflush(stdout);
 
     while (keep_running) {

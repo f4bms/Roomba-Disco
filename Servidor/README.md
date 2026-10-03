@@ -31,6 +31,31 @@ El segundo argumento es la raiz web opcional; con el cliente separado puede qued
 
 En el dispositivo del cliente se corre la aplicacion Angular por separado (`ng serve` o el bundle de `ng build`) y se escribe la direccion de la Pi en el campo de conexion del panel, por ejemplo `192.168.1.50:8080`.
 
+## Autenticacion academica
+
+El WebSocket requiere autenticacion antes de aceptar comandos o enviar snapshots. El cliente nunca envia la contrasena: envia `auth_init`, recibe un salt y un reto aleatorio de 32 bytes, y responde con `SHA256(SHA256(salt || contrasena) || reto)`. El servidor consume el reto una sola vez y autoriza esa conexion WebSocket si la respuesta coincide. El archivo de usuarios almacena `usuario:salt_hex:verificador_hex`; el salt/verificador se generan con `crear_usuario` y el archivo debe mantenerse fuera del web root.
+
+La autenticacion usa SHA-256 implementado en el proyecto como requisito academico. No es una solucion criptografica de produccion ni activa TLS. El servidor actual expone `ws://`; limitarlo a la red de pruebas del curso.
+
+No se versiona ninguna cuenta por defecto. Para desarrollo local, desde la raiz:
+
+```bash
+./Servidor/build/crear_usuario admin 'elegir-clave' Servidor/usuarios.conf
+chmod 600 Servidor/usuarios.conf
+./Servidor/build/servidor 8080 "" /tmp/roomba-logica.sock Servidor/usuarios.conf
+```
+
+En Yocto, detener primero el servicio, crear la cuenta en el archivo persistente y volverlo a iniciar:
+
+```bash
+systemctl stop servidor
+/usr/bin/crear_usuario admin 'elegir-clave' /var/lib/roomba-disco/usuarios.conf
+chmod 600 /var/lib/roomba-disco/usuarios.conf
+systemctl start servidor
+```
+
+Actualmente no hay usuarios persistentes en el repositorio: hay que provisionar al menos uno en cada entorno antes de poder iniciar sesion. Evitar reutilizar la clave de ejemplo `roomba123` usada en la prueba temporal.
+
 ## Instalar en la Raspberry Pi
 
 ```bash

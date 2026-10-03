@@ -18,6 +18,7 @@ Servidor/*.exe
 Servidor/*.a
 Servidor/servidor
 Servidor/api
+Servidor/usuarios.conf
 Servidor/compile_commands.json
 Servidor/*.dSYM/
 
