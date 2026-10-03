@@ -1,12 +1,17 @@
 <mat-card appearance="outlined" class="map-card">
   <mat-card-content>
     <mat-card-title>Mapa</mat-card-title>
-    <div class="map-grid" [style.grid-template-columns]="'repeat(' + width + ', 1fr)'">
+    <div
+      class="map-grid"
+      [style.grid-template-columns]="'repeat(' + width + ', minmax(0, 1fr))'"
+      [style.grid-template-rows]="'repeat(' + height + ', minmax(0, 1fr))'"
+      [style.aspect-ratio]="width + ' / ' + height">
       @for (cell of cells; track $index) {
         <div
           class="map-cell"
           [class.visited]="cell === 1"
           [class.obstacle]="cell === 2"
+          [class.free-observed]="cell === 3"
           [class.unknown]="cell === 0">
         </div>
       }
@@ -15,6 +20,7 @@
       <span class="legend-item"><span class="swatch unknown"></span> Desconocida</span>
       <span class="legend-item"><span class="swatch visited"></span> Visitada</span>
       <span class="legend-item"><span class="swatch obstacle"></span> Obstáculo</span>
+      <span class="legend-item"><span class="swatch free-observed"></span> Libre observada</span>
     </div>
   </mat-card-content>
 </mat-card>
