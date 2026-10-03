@@ -17,8 +17,8 @@
 #define PIN_SALIDA_BLINK   27
 #define PIN_ENTRADA        22
 
-#define BLINK_FREQ_HZ 2.0
-#define BLINK_DURACION_S 5.0
+#define BLINK_FREQ_HZ 500.0
+#define BLINK_DURACION_S 20.0
 
 int main(void) {
     if (pinMode(PIN_SALIDA_DIGITAL, GPIO_OUTPUT) != 0 ||
