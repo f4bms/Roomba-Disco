@@ -54,7 +54,7 @@ El sistema se divide en cuatro dominios:
   lógico de 5 V. Las celdas se cargan de forma individual, fuera de línea.
 - **Dominio lógico** (tierra `GND_L`). Raspberry Pi 4 con imagen mínima construida con
   Yocto; expone el acceso a hardware mediante la biblioteca de control. Cuelgan de ella
-  los sensores de proximidad (≥ 2, frontal y lateral), los 4 LEDs de estado, la salida
+  los dos sensores ultrasónicos HC-SR04 (frontal y trasero), los 4 LEDs de estado, la salida
   de audio y la odometría de los motores.
 - **Barrera de aislamiento galvánico.** Optoacopladores en las 6 líneas de control del
   driver (`IN1`–`IN4`, `ENA`, `ENB`). Las tierras `GND_L` y `GND_P` se mantienen
@@ -63,9 +63,10 @@ El sistema se divide en cuatro dominios:
   velocidad por PWM en `ENA`/`ENB`, y los dos motores DC de la tracción diferencial.
 
 #### Mapa de pines GPIO (Raspberry Pi 4)
-El PWM de los motores se asignó a `GPIO12`/`GPIO13` (PWM0) en vez de `GPIO18`/`GPIO19`
-(PWM1) para dejar esas líneas libres, por si la salida de audio termina siendo un DAC
-por I2S en lugar de jack analógico.
+El PWM de los motores usa `GPIO12`/`GPIO13` (los dos canales de PWM0, función ALT0).
+`GPIO18`/`GPIO19` son los mismos dos canales en pines alternativos, así que quedan sin
+conectar. Las señales se agrupan por mazo: motores en los pines 29–37 y sensores y LEDs
+en los pines 11–24.
 
 | Función | Pin BCM | Pin físico | Dirección | Periférico | Nota |
 |---|---|---|---|---|---|
@@ -74,16 +75,22 @@ por I2S en lugar de jack analógico.
 | IN1 (dir. motor izq. A) | GPIO5 | 29 | out | GPIO | por optoacoplador |
 | IN2 (dir. motor izq. B) | GPIO6 | 31 | out | GPIO | por optoacoplador |
 | IN3 (dir. motor der. A) | GPIO16 | 36 | out | GPIO | por optoacoplador |
-| IN4 (dir. motor der. B) | GPIO17 | 11 | out | GPIO | por optoacoplador |
+| IN4 (dir. motor der. B) | GPIO26 | 37 | out | GPIO | por optoacoplador |
 | LED autónomo | GPIO22 | 15 | out | GPIO | directo (con resistencia) |
 | LED manual | GPIO23 | 16 | out | GPIO | directo |
 | LED alerta obstáculo | GPIO24 | 18 | out | GPIO | directo |
 | LED encendido | GPIO25 | 22 | out | GPIO | directo |
-| Sensores (frontal/lateral) | por definir | — | in | GPIO / I2C | depende de la tecnología de sensor elegida |
-| Audio | por definir | 18-21 reservados | — | I2S / jack | el jack analógico no usa pines del header |
+| TRIG HC-SR04 frontal | GPIO10 | 19 | out | GPIO | directo (3,3 V basta para disparar) |
+| ECHO HC-SR04 frontal | GPIO9 | 21 | in | GPIO | por divisor 2,2 kΩ / 3,3 kΩ (5 V → ~3 V) |
+| TRIG HC-SR04 trasero | GPIO11 | 23 | out | GPIO | directo |
+| ECHO HC-SR04 trasero | GPIO8 | 24 | in | GPIO | por divisor 2,2 kΩ / 3,3 kΩ |
+| Encoder izquierdo | GPIO27 | 13 | in | GPIO | directo (F249 a 3,3 V) |
+| Encoder derecho | GPIO17 | 11 | in | GPIO | directo (F249 a 3,3 V) |
+| Audio | — | — | — | jack | el jack analógico no usa pines del header |
 
-`GPIO2`/`GPIO3` (I2C), `GPIO14`/`GPIO15` (UART) y `GPIO7`-`GPIO11` (SPI) se dejan libres
-por si algún sensor o la consola de depuración los necesitan.
+Los sensores ocupan `GPIO8`–`GPIO11`, que son los pines de SPI0, así que el SPI debe
+quedar deshabilitado en la imagen. `GPIO2`/`GPIO3` (I2C) y `GPIO14`/`GPIO15` (UART, consola
+de depuración) quedan libres, igual que `GPIO4`, `GPIO7`, `GPIO20` y `GPIO21`.
 
 La salida del optoacoplador es open-collector e invierte la señal recibida; la
 compensación se hace en la biblioteca de control, no en la asignación de pines.
@@ -94,7 +101,6 @@ Las cajas y flechas punteadas del diagrama marcan puntos aún sin cerrar:
 
 | Elemento | Pendiente |
 |---|---|
-| Sensores de proximidad | Tecnología: ultrasónico (HC-SR04) o infrarrojo |
 | Salida de audio | Ruta: analógica (jack + amplificador) o DAC I2S |
 | Odometría | Método: encoders en las ruedas o estimación por tiempo/PWM |
 
