@@ -36,24 +36,19 @@ void roombateca_control_cleanup(void) {
 	motor_control_cleanup();
 }
 
-int roombateca_read_sensors(float distances[SENSOR_CANTIDAD]) {
+int roombateca_read_sensors(float distances[SENSOR_CANTIDAD], bool valid[SENSOR_CANTIDAD]) {
 	int sensor;
 
-	if (distances == NULL) return -1;
+	if (distances == NULL || valid == NULL) return -1;
 	for (sensor = 0; sensor < SENSOR_CANTIDAD; ++sensor) {
-		if (sensor_medir((sensor_id_t)sensor, &distances[sensor]) != 0) return -1;
+		valid[sensor] = sensor_medir((sensor_id_t)sensor, &distances[sensor]) == 0;
 	}
 	return 0;
 }
 
 int roombateca_read_encoders(encoder_lectura_t readings[ENCODER_CANTIDAD]) {
-	int encoder;
-
 	if (readings == NULL) return -1;
-	for (encoder = 0; encoder < ENCODER_CANTIDAD; ++encoder) {
-		if (encoder_leer((encoder_id_t)encoder, &readings[encoder]) != 0) return -1;
-	}
-	return 0;
+	return encoders_leer_todos(readings);
 }
 
 int roombateca_set_motion(const char *direction, int speed) {

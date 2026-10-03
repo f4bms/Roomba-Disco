@@ -118,7 +118,7 @@ def main() -> None:
             connection = websocket_connect(PORT)
             send_text(connection, {"type": "get_state"})
             initial = receive_until(connection, lambda message: message.get("type") == "state")
-            assert len(initial["reported"]["sensors"]) == 3
+            assert len(initial["reported"]["sensors"]) == 2
             base_revision = initial["revision"]
 
             # Cliente -> Logica: un cambio del cliente debe observarse en el estado.
@@ -146,7 +146,7 @@ def main() -> None:
             # Logica -> Cliente: sin enviar nada, la telemetria periodica debe seguir llegando.
             telemetry = receive_until(connection, lambda message: message.get("type") == "state")
             assert "map" in telemetry["reported"]
-            assert len(telemetry["reported"]["sensors"]) == 3
+            assert len(telemetry["reported"]["sensors"]) == 2
 
             connection.close()
             print("OK: cliente WebSocket <-> servidor <-> Logica C (bidireccional + telemetria)")

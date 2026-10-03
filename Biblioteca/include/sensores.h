@@ -7,8 +7,7 @@ extern "C" {
 
 typedef enum {
     SENSOR_FRONTAL = 0,
-    SENSOR_IZQUIERDO,
-    SENSOR_DERECHO,
+    SENSOR_TRASERO,
     SENSOR_CANTIDAD
 } sensor_id_t;
 
@@ -19,7 +18,7 @@ typedef enum {
 /* Tiempo mínimo entre disparos de cualquier par de sensores. */
 #define SENSOR_INTERVALO_MIN_MS 60
 
-/* Configura TRIG/ECHO de los tres sensores. Devuelve 0 o -errno. */
+/* Configura TRIG/ECHO de los dos sensores. Devuelve 0 o -errno. */
 int sensores_init(void);
 
 void sensores_cleanup(void);

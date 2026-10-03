@@ -7,7 +7,6 @@
 #include <errno.h>
 #include <pthread.h>
 #include <stdint.h>
-#include <stdio.h>
 #include <string.h>
 #include <time.h>
 
@@ -53,7 +52,6 @@ int encoders_init(void) {
     clock_gettime(CLOCK_MONOTONIC, &ultima_actualizacion);
     inicializado = 1;
     pthread_mutex_unlock(&encoders_mutex);
-    printf("[encoders] encoders_init\n");
     return 0;
 }
 
@@ -61,7 +59,6 @@ void encoders_cleanup(void) {
     pthread_mutex_lock(&encoders_mutex);
     inicializado = 0;
     pthread_mutex_unlock(&encoders_mutex);
-    printf("[encoders] encoders_cleanup\n");
 }
 
 int encoder_leer(encoder_id_t id, encoder_lectura_t *lectura) {
@@ -74,7 +71,19 @@ int encoder_leer(encoder_id_t id, encoder_lectura_t *lectura) {
     actualizar_lecturas();
     *lectura = lecturas[id];
     pthread_mutex_unlock(&encoders_mutex);
-    printf("[encoders] encoder_leer: encoder=%d\n", id);
+    return 0;
+}
+
+int encoders_leer_todos(encoder_lectura_t lecturas_salida[ENCODER_CANTIDAD]) {
+    if (lecturas_salida == NULL) return -EINVAL;
+    pthread_mutex_lock(&encoders_mutex);
+    if (!inicializado) {
+        pthread_mutex_unlock(&encoders_mutex);
+        return -1;
+    }
+    actualizar_lecturas();
+    memcpy(lecturas_salida, lecturas, sizeof(lecturas));
+    pthread_mutex_unlock(&encoders_mutex);
     return 0;
 }
 
@@ -87,6 +96,5 @@ int encoders_reset(void) {
     actualizar_lecturas();
     memset(lecturas, 0, sizeof(lecturas));
     pthread_mutex_unlock(&encoders_mutex);
-    printf("[encoders] encoders_reset\n");
     return 0;
 }

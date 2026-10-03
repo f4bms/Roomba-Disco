@@ -12,6 +12,8 @@ extern "C" {
 #define MAPA_DESCONOCIDA 0
 #define MAPA_VISITADA 1
 #define MAPA_OBSTACULO 2
+#define MAPA_LIBRE_OBSERVADA 3
+#define MAPA_DIMENSION_MAXIMA 50
 
 typedef struct {
     int width;

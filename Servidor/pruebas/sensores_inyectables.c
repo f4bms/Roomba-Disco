@@ -14,7 +14,7 @@ int sensor_medir(sensor_id_t id, float *distancia_cm) {
 
     file = fopen(path, "r");
     if (file == NULL) return 0;
-    int parsed = fscanf(file, "%f %f %f", &distances[0], &distances[1], &distances[2]);
+    int parsed = fscanf(file, "%f %f", &distances[0], &distances[1]);
     fclose(file);
     if (parsed != SENSOR_CANTIDAD) return 0;
     for (int index = 0; index < SENSOR_CANTIDAD; ++index) {

@@ -63,7 +63,7 @@ reported.pose
 `logica.c` tiene un hilo separado que se despierta cada 100 ms. Este hilo no
 espera a que el cliente envie un mensaje. En cada ciclo:
 
-1. Lee los tres sensores.
+1. Lee los dos sensores, frontal y trasero.
 2. Lee los dos encoders.
 3. Actualiza la odometria.
 4. Actualiza `reported.sensors`.
@@ -73,6 +73,10 @@ El hilo que atiende el socket y el hilo de control comparten el documento JSON.
 Por eso se usa `state_mutex`: antes de leer o modificar el estado, cada hilo
 lo bloquea. Esto evita que un hilo lea el JSON mientras el otro lo esta
 modificando.
+
+Los dos encoders se leen mediante una sola operacion conjunta. Esto evita que
+la lectura de la rueda izquierda y la derecha ocurra en instantes diferentes y
+reduzca el error de la odometria.
 
 ## Simulacion de motores
 
@@ -172,6 +176,13 @@ La primera lectura no genera movimiento. Solo se guarda como referencia. Esto
 evita interpretar la distancia que ya tenia el encoder al iniciar como un
 movimiento nuevo.
 
+El movimiento es persistente: `FWD`, `BACK`, `TURN_L` y `TURN_R` mantienen la
+ultima velocidad aplicada hasta recibir otro comando o `STOP`. El watchdog no
+usa un tiempo sin comandos, porque eso rompería este comportamiento. En su
+lugar, el servidor envia un heartbeat cada segundo. Si la conexion entre
+Servidor y Logica desaparece durante mas de 2 segundos, Logica detiene ambos
+motores. Al cerrar el socket, tambien se ejecuta una parada inmediata.
+
 ## Estado publicado
 
 Durante el primer ciclo, Logica agrega esta seccion al estado reportado:
@@ -187,6 +198,18 @@ Durante el primer ciclo, Logica agrega esta seccion al estado reportado:
 El nombre `reported.pose` es temporal para probar la conexion. Todavia no se
 visualiza en el cliente porque el componente del mapa aun no consume esta
 pose.
+
+El mapa usa estos estados de celda:
+
+```text
+0 = desconocida
+1 = visitada por el robot
+2 = obstaculo
+3 = libre observada por un sensor
+```
+
+El estado `3` se conserva en el registro del mapa, aunque el cliente todavia
+no lo muestra con un color propio.
 
 ## Pruebas automatizadas
 
@@ -230,17 +253,18 @@ ctest --test-dir Servidor/build-sim --output-on-failure \
 
 Esta etapa todavia no implementa:
 
-- `mapa.c` y `mapa.h`;
-- conversion de la pose a celdas;
-- celdas visitadas y obstaculos;
-- publicacion espontanea de estados al servidor;
 - control autonomo;
-- correccion del joystick;
 - calibracion con medidas fisicas reales.
 
-El siguiente paso es crear el modulo de mapa usando la pose ya calculada.
-Despues se conectaran los sensores a las celdas libres y a las celdas con
-obstaculos.
+La publicacion hacia el servidor se hace solo cuando cambia el estado. No se
+envian snapshots identicos cada 100 ms; el periodo de 100 ms se conserva para
+leer hardware y actualizar el mapa, pero el socket solo transmite cuando hay
+un cambio observable.
+
+La grilla actual es fija de `8 x 6`. La pose puede salir de esos limites, pero
+por ahora las posiciones fuera de la grilla no se agregan automaticamente.
+Para hacerla crecer habrá que implementar una grilla dinamica o ampliar la
+grilla y ajustar el origen cuando el robot llegue a un borde.
 Luego abre `http://localhost:8080`. Para probar todo el recorrido automaticamente:
 
 ```bash
