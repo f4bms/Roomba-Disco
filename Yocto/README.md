@@ -6,11 +6,31 @@ release 5.0)**.
 
 El paso a paso de instalación, generación de la imagen y flasheo en la Pi está en el
 [`README.md`](../README.md) de la raíz del repo (secciones 2 y 9). Este archivo cubre
-solo los dos flujos de trabajo que no están ahí: generar el SDK desde cero, e iterar con
-`devtool` sobre la Pi corriendo sin reflashear.
+solo los flujos de trabajo que no están ahí: conectar la Pi a WiFi, generar el SDK desde
+cero, e iterar con `devtool` sobre la Pi corriendo sin reflashear.
 
 La biblioteca de hardware (`roombateca`) no vive acá, sino en `../Biblioteca/` — ver la
 sección 3 del README de la raíz para el detalle de la receta que la referencia.
+
+## Conectar la Pi a WiFi
+
+La imagen trae el driver y firmware del WiFi integrado, `wpa_supplicant` corriendo sobre
+`wlan0` desde el arranque y DHCP por `systemd-networkd` (receta
+`meta-robot/recipes-connectivity/wifi-config`). No trae ninguna red guardada: la primera
+vez hay que entrar por cable (Ethernet) y agregarla desde la Pi:
+
+```bash
+ssh root@<ip-por-ethernet>
+wpa_passphrase "NOMBRE_RED" "contraseña" >> /etc/wpa_supplicant/wpa_supplicant-wlan0.conf
+systemctl restart wpa_supplicant@wlan0
+ip -br addr show wlan0                 # debería mostrar la IP que dio el router
+```
+
+La red queda guardada en la SD, así que en los siguientes arranques se conecta sola y ya
+se puede desconectar el cable. Si ambos están conectados, se prefiere la ruta por
+Ethernet. Para cambiar de red, editar `/etc/wpa_supplicant/wpa_supplicant-wlan0.conf`
+(borrar el bloque `network={...}` viejo) y repetir los dos últimos comandos. Para ver el
+estado: `wpa_cli -i wlan0 status` e `iw dev wlan0 link`.
 
 ## Generar el SDK standalone (para cross-compilar sin la imagen completa)
 
