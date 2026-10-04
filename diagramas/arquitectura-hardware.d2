@@ -17,12 +17,13 @@ energia: "SUBSISTEMA DE ENERGÍA" {
     style.fill: "#f4f4f4"
     style.stroke-dash: 3
   }
-  celdas: "Pack batería 18650\n3S1P · 11,1–12,6 V"
+  celdas: "Pack 3× Samsung 25R 18650\n3S1P · 11,1–12,6 V · 2,5 Ah"
   bms: "BMS 3S balanceada"
+  switch: "Interruptor general"
   nodo_bat: "Riel de batería\n11,1–12,6 V" {
     shape: hexagon
   }
-  buck: "Convertidor DC-DC\n12 V → 5 V"
+  buck: "Convertidor DC-DC XL4016\n12 V → 5,1 V"
   nodo_5v: "Riel lógico\n5 V" {
     shape: hexagon
   }
@@ -31,7 +32,8 @@ energia: "SUBSISTEMA DE ENERGÍA" {
     style.stroke-dash: 3
   }
   celdas -> bms
-  bms -> nodo_bat
+  bms -> switch: "P+"
+  switch -> nodo_bat
   nodo_bat -> buck
   buck -> nodo_5v
 }
@@ -39,30 +41,25 @@ energia: "SUBSISTEMA DE ENERGÍA" {
 logico: "DOMINIO LÓGICO   ·   tierra GND_L" {
   style.fill: "#edf1fb"
 
-  pi: "Raspberry Pi 4"
-  sensores: "Sensores ultrasónicos HC-SR04 ×2\nfrontal · trasero\nECHO por divisor 5 V → 3,3 V"
-  leds: "LEDs de estado ×4\nautónomo · manual · alerta · encendido"
-  audio: "Salida de audio + parlante\nPor definir: analógica o I2S" {
-    style.stroke-dash: 3
-  }
-  odo: "Odometría de motores\nPor definir: encoders o estimación" {
-    style.stroke-dash: 3
-  }
+  pi: "Raspberry Pi 4\nimagen Yocto + libroombateca"
+  sensores: "HC-SR04 ×2 (5 V)\nfrontal GPIO10/9 · trasero GPIO11/8\nECHO por divisor 2,2 kΩ / 3,3 kΩ"
+  encoders: "Encoders ópticos F249 ×2 (3,3 V)\nizq. GPIO27 · der. GPIO17"
+  leds: "LEDs de estado ×4 (activos en alto)\nazul autónomo GPIO22 · 100 Ω\namarillo manual GPIO23 · 220 Ω\nrojo alerta GPIO24 · 270 Ω\nverde encendido GPIO25 · 220 Ω"
+  ampli: "Amplificador PAM8403\nclase D, 5 V"
+  parlante: "Parlante"
 
-  sensores -> pi: "GPIO (TRIG/ECHO)"
+  sensores -> pi: "TRIG / ECHO"
+  encoders -> pi: "flancos"
   pi -> leds: "GPIO"
-  pi -> audio {
-    style.stroke-dash: 3
-  }
-  odo -> pi {
-    style.stroke-dash: 3
-  }
+  pi -> ampli: "jack 3,5 mm"
+  ampli -> parlante
 }
 
 aislamiento: "BARRERA DE AISLAMIENTO GALVÁNICO" {
   style.fill: "#fdf2e5"
 
-  opto: "Optoacopladores\n6 canales (IN1–IN4, ENA, ENB)"
+  opto: "6× PC817 · tracción\nentrada 330 Ω · pull-up 4,7 kΩ\nseñal invertida"
+  opto_succion: "1× PC817 · succión\nentrada 330 Ω · señal directa"
   nota: "GND_L y GND_P separadas;\núnico cruce = el optoacoplador" {
     shape: text
     style.italic: true
@@ -73,18 +70,32 @@ potencia: "DOMINIO DE POTENCIA   ·   tierra GND_P" {
   style.fill: "#fbedef"
   direction: right
 
-  l298n: "Driver puente H (L298N)\nPWM en ENA/ENB"
-  motor_izq: "Motor DC izquierdo"
-  motor_der: "Motor DC derecho"
+  l298n: "Driver puente H L298N\nregulador 5 V propio (jumper 5V EN)"
+  motor_izq: "Motor TT izquierdo\n+ disco ranurado"
+  motor_der: "Motor TT derecho\n+ disco ranurado"
+  mosfet: "MOSFET IRLZ44N, lado bajo\nSR540 de rueda libre · fusible 3 A"
+  succion: "Motor de succión RK-380PH 7,4 V\n+ turbina · duty máx. 55 %"
 
   l298n -> motor_izq: "OUT1/OUT2"
   l298n -> motor_der: "OUT3/OUT4"
+  succion -> mosfet: "borne −"
 }
 
-energia.nodo_5v -> logico.pi: "5 V"
-energia.nodo_5v -> aislamiento.opto: "5 V"
-energia.nodo_5v -> potencia.l298n: "5 V lógico"
+energia.nodo_5v -> logico.pi: "5 V por USB-C"
+energia.nodo_5v -> logico.sensores: "5 V"
+energia.nodo_5v -> logico.ampli: "5 V"
 energia.nodo_bat -> potencia.l298n: "12 V"
+energia.nodo_bat -> potencia.succion: "12 V"
+energia.nodo_bat -> aislamiento.opto_succion: "12 V al colector"
 
-logico.pi -> aislamiento.opto: "PWM + dirección"
-aislamiento.opto -> potencia.l298n: "IN1–IN4, ENA, ENB"
+logico.pi -> aislamiento.opto: "PWM ~1 kHz GPIO12/13\ndirección GPIO5/6/16/26"
+aislamiento.opto -> potencia.l298n: "ENA, ENB, IN1–IN4"
+potencia.l298n -> aislamiento.opto: "5 V para pull-ups"
+logico.pi -> aislamiento.opto_succion: "PWM por software ~1 kHz\nGPIO21"
+aislamiento.opto_succion -> potencia.mosfet: "compuerta"
+potencia.motor_izq -> logico.encoders: "acople óptico (sin conexión eléctrica)" {
+  style.stroke-dash: 5
+}
+potencia.motor_der -> logico.encoders {
+  style.stroke-dash: 5
+}

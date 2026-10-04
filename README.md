@@ -48,19 +48,23 @@ El sistema está estructurado bajo un modelo en 4 niveles:
 
 El sistema se divide en cuatro dominios:
 
-- **Subsistema de energía.** Pack de baterías 18650 en 3S1P (11,1–12,6 V) con BMS 3S
-  balanceada. De ahí salen dos rieles regulados por separado: el riel de batería
-  (11,1–12,6 V) alimenta la etapa de potencia y un convertidor DC-DC deriva el riel
-  lógico de 5 V. Las celdas se cargan de forma individual, fuera de línea.
+- **Subsistema de energía.** Pack de 3 celdas Samsung 25R 18650 en 3S1P (11,1–12,6 V,
+  2,5 Ah) con BMS 3S balanceada e interruptor general en la salida. De ahí salen dos
+  rieles regulados por separado: el riel de batería alimenta la etapa de potencia y un
+  convertidor DC-DC XL4016 deriva el riel lógico de 5 V, que llega a la Pi por USB-C. Las
+  celdas se cargan de forma individual, fuera de línea.
 - **Dominio lógico** (tierra `GND_L`). Raspberry Pi 4 con imagen mínima construida con
   Yocto; expone el acceso a hardware mediante la biblioteca de control. Cuelgan de ella
-  los dos sensores ultrasónicos HC-SR04 (frontal y trasero), los 4 LEDs de estado, la salida
-  de audio y la odometría de los motores.
-- **Barrera de aislamiento galvánico.** Optoacopladores en las 6 líneas de control del
-  driver (`IN1`–`IN4`, `ENA`, `ENB`). Las tierras `GND_L` y `GND_P` se mantienen
-  separadas y su único punto de cruce es el optoacoplador.
+  los dos sensores ultrasónicos HC-SR04 (frontal y trasero), los 4 LEDs de estado, los dos
+  encoders ópticos F249 de la odometría y la salida de audio: jack de 3,5 mm →
+  amplificador PAM8403 → parlante.
+- **Barrera de aislamiento galvánico.** Optoacopladores PC817 en las 6 líneas de control
+  del driver (`IN1`–`IN4`, `ENA`, `ENB`). Las tierras `GND_L` y `GND_P` se mantienen
+  separadas y su único punto de cruce es el optoacoplador. Los pull-ups de salida se
+  alimentan con el regulador de 5 V propio del L298N, nunca con el riel lógico.
 - **Dominio de potencia** (tierra `GND_P`). Driver de puente H (L298N) con control de
-  velocidad por PWM en `ENA`/`ENB`, y los dos motores DC de la tracción diferencial.
+  velocidad por PWM en `ENA`/`ENB`, y los dos motores TT de la tracción diferencial, cada
+  uno con un disco ranurado que leen los encoders sin contacto eléctrico.
 
 #### Mapa de pines GPIO (Raspberry Pi 4)
 El PWM de los motores usa `GPIO12`/`GPIO13` (los dos canales de PWM0, función ALT0).
@@ -76,33 +80,32 @@ en los pines 11–24.
 | IN2 (dir. motor izq. B) | GPIO6 | 31 | out | GPIO | por optoacoplador |
 | IN3 (dir. motor der. A) | GPIO16 | 36 | out | GPIO | por optoacoplador |
 | IN4 (dir. motor der. B) | GPIO26 | 37 | out | GPIO | por optoacoplador |
-| LED autónomo | GPIO22 | 15 | out | GPIO | directo (con resistencia) |
-| LED manual | GPIO23 | 16 | out | GPIO | directo |
-| LED alerta obstáculo | GPIO24 | 18 | out | GPIO | directo |
-| LED encendido | GPIO25 | 22 | out | GPIO | directo |
+| LED autónomo (azul) | GPIO22 | 15 | out | GPIO | directo, 100 Ω serie, activo en alto |
+| LED manual (amarillo) | GPIO23 | 16 | out | GPIO | directo, 220 Ω serie, activo en alto |
+| LED alerta obstáculo (rojo) | GPIO24 | 18 | out | GPIO | directo, 270 Ω serie, activo en alto |
+| LED encendido (verde) | GPIO25 | 22 | out | GPIO | directo, 220 Ω serie, activo en alto |
 | TRIG HC-SR04 frontal | GPIO10 | 19 | out | GPIO | directo (3,3 V basta para disparar) |
 | ECHO HC-SR04 frontal | GPIO9 | 21 | in | GPIO | por divisor 2,2 kΩ / 3,3 kΩ (5 V → ~3 V) |
 | TRIG HC-SR04 trasero | GPIO11 | 23 | out | GPIO | directo |
 | ECHO HC-SR04 trasero | GPIO8 | 24 | in | GPIO | por divisor 2,2 kΩ / 3,3 kΩ |
 | Encoder izquierdo | GPIO27 | 13 | in | GPIO | directo (F249 a 3,3 V) |
 | Encoder derecho | GPIO17 | 11 | in | GPIO | directo (F249 a 3,3 V) |
+| Succión (compuerta del IRLZ44N) | GPIO21 | 40 | out | PWM por software, ~1 kHz | por optoacoplador, señal directa |
 | Audio | — | — | — | jack | el jack analógico no usa pines del header |
 
 Los sensores ocupan `GPIO8`–`GPIO11`, que son los pines de SPI0, así que el SPI debe
 quedar deshabilitado en la imagen. `GPIO2`/`GPIO3` (I2C) y `GPIO14`/`GPIO15` (UART, consola
-de depuración) quedan libres, igual que `GPIO4`, `GPIO7`, `GPIO20` y `GPIO21`.
+de depuración) quedan libres, igual que `GPIO4`, `GPIO7` y `GPIO20`.
 
-La salida del optoacoplador es open-collector e invierte la señal recibida; la
-compensación se hace en la biblioteca de control, no en la asignación de pines.
+En la tracción, la salida del optoacoplador es open-collector e invierte la señal recibida;
+la compensación se hace en la biblioteca de control, no en la asignación de pines. En la
+succión el PC817 trabaja como seguidor de emisor hacia la compuerta del MOSFET, así que la
+señal llega sin invertir.
 
-#### Decisiones de hardware pendientes
-
-Las cajas y flechas punteadas del diagrama marcan puntos aún sin cerrar:
-
-| Elemento | Pendiente |
-|---|---|
-| Salida de audio | Ruta: analógica (jack + amplificador) o DAC I2S |
-| Odometría | Método: encoders en las ruedas o estimación por tiempo/PWM |
+La succión no tiene canal de PWM por hardware libre (PWM0 lo usa el L298N y PWM1 el jack
+de audio), así que `libroombateca` genera el PWM por software en un hilo. El motor es de
+7,4 V y el riel de batería llega a 12,6 V: la potencia 100 de `succion_set()` equivale a un
+duty del 55 %, con rampa de arranque de 1 s.
 
 ---
 
@@ -327,7 +330,7 @@ Summary: There were 2 WARNING messages.
 ---
 
 ## 📖 6. Documentación de la API de la Biblioteca Dinámica
-`[PENDIENTE - Prototipos detallados de roombateca.h, descripción de parámetros para pinMode, digitalWrite, Get_distance, e hilos POSIX de audio concurrente]`
+`[PENDIENTE - Documentar la API de roombateca.h: roombateca_init/cleanup y los módulos de motores, sensores, encoders, LEDs y audio (parámetros, unidades, códigos de retorno y concurrencia)]`
 
 ---
 
