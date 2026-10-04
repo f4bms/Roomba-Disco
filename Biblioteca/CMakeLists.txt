@@ -32,6 +32,10 @@ target_include_directories(roombateca PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
+if(ROOMBATECA_HARDWARE)
+    target_compile_definitions(roombateca PRIVATE ROOMBATECA_HARDWARE)
+endif()
+
 if(DEFINED ROOMBATECA_AUDIO_DIR)
     target_compile_definitions(roombateca PRIVATE "AUDIO_DIR=\"${ROOMBATECA_AUDIO_DIR}/\"")
 endif()

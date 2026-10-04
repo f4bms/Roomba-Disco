@@ -16,6 +16,7 @@
 #include <unistd.h>
 
 #include "cJSON.h"
+#include "leds.h"
 #include "mapa.h"
 #include "odometria.h"
 #include "roombateca_control.h"
@@ -202,6 +203,7 @@ static void control_tick(cJSON *state, odometria_t *odometria, mapa_t *mapa,
             bool obstacle_active = obstacle_detected(distances, sensor_valid);
             bool trigger_alert = obstacle_active && !*obstacle_was_active;
             *obstacle_was_active = obstacle_active;
+            led_set(LED_ALERTA, obstacle_active);
             if (trigger_alert) {
                 pthread_mutex_unlock(&state_mutex);
                 roombateca_audio_obstacle_alert();
@@ -302,6 +304,7 @@ static bool apply_desired_state(cJSON *state, const cJSON *patch) {
     if (string_is_one_of(mode, modes, 2)) {
         replace_item(desired, "mode", cJSON_Duplicate(mode, true));
         replace_item(reported, "mode", cJSON_Duplicate(mode, true));
+        roombateca_set_mode_leds(mode->valuestring);
         changed = true;
     }
 
@@ -559,6 +562,12 @@ int main(int argc, char **argv) {
         fprintf(stderr, "no se pudo inicializar el control de motores\n");
         cJSON_Delete(state);
         return EXIT_FAILURE;
+    }
+
+    {
+        cJSON *reported = cJSON_GetObjectItemCaseSensitive(state, "reported");
+        cJSON *mode = cJSON_GetObjectItemCaseSensitive(reported, "mode");
+        if (cJSON_IsString(mode)) roombateca_set_mode_leds(mode->valuestring);
     }
 
     signal(SIGINT, stop_logic);

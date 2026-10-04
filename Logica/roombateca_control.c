@@ -1,6 +1,7 @@
 #include "roombateca_control.h"
 
 #include "encoders.h"
+#include "leds.h"
 #include "motores.h"
 #include "sensores.h"
 
@@ -34,6 +35,13 @@ int roombateca_control_init(void) {
 		motor_control_cleanup();
 		return -1;
 	}
+	if (leds_init() != 0) {
+		encoders_cleanup();
+		sensores_cleanup();
+		motor_control_cleanup();
+		return -1;
+	}
+	led_set(LED_ENCENDIDO, true);
 	audio_disponible = audio_control_init() == 0;
 	return 0;
 }
@@ -44,6 +52,14 @@ void roombateca_control_cleanup(void) {
 	encoders_cleanup();
 	sensores_cleanup();
 	motor_control_cleanup();
+	led_set(LED_ENCENDIDO, false);
+	leds_cleanup();
+}
+
+void roombateca_set_mode_leds(const char *mode) {
+	if (mode == NULL) return;
+	led_set(LED_MANUAL,   strcmp(mode, "MANUAL") == 0);
+	led_set(LED_AUTONOMO, strcmp(mode, "AUTO")   == 0);
 }
 
 int roombateca_audio_play_track(int track) {
