@@ -12,6 +12,7 @@ option(ROOMBATECA_SIM_INJECT "Usar sensores inyectables via ROO_SIM_SENSORS_FILE
 set(ROOMBATECA_SOURCES
     lib/leds.c
     lib/audio_th.c
+    lib/succion.c
 )
 
 if(ROOMBATECA_HARDWARE)

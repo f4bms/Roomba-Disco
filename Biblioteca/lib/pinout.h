@@ -38,4 +38,8 @@
 #define PIN_LED_MANUAL        23   /* pin 16, amarillo */
 #define PIN_LED_AUTONOMO      22   /* pin 15, azul */
 
+/* Succión: PC817 → IRLZ44N de lado bajo, lógica directa (sin invertir).
+ * Sin canal de PWM por hardware libre: se genera por software. */
+#define PIN_SUCCION           21   /* pin 40 */
+
 #endif
