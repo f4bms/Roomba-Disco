@@ -16,6 +16,13 @@ static int scaled_speed(int speed) {
 	return (speed * 100 + 500) / 1000;
 }
 
+static int audio_disponible;
+static const char *const audio_tracks[] = {
+	AUDIO_TRACK_1,
+	AUDIO_TRACK_2,
+	AUDIO_TRACK_3,
+};
+
 int roombateca_control_init(void) {
 	if (motor_control_init() != 0) return -1;
 	if (sensores_init() != 0) {
@@ -27,13 +34,66 @@ int roombateca_control_init(void) {
 		motor_control_cleanup();
 		return -1;
 	}
+	audio_disponible = audio_control_init() == 0;
 	return 0;
 }
 
 void roombateca_control_cleanup(void) {
+	audio_control_cleanup();
+	audio_disponible = 0;
 	encoders_cleanup();
 	sensores_cleanup();
 	motor_control_cleanup();
+}
+
+int roombateca_audio_play_track(int track) {
+	if (!audio_disponible || track < 0
+			|| track >= (int)(sizeof(audio_tracks) / sizeof(audio_tracks[0]))) return -1;
+	return audio_play(audio_tracks[track]);
+}
+
+int roombateca_audio_pause(void) {
+	return audio_disponible ? audio_pause() : -1;
+}
+
+int roombateca_audio_resume(void) {
+	return audio_disponible ? audio_resume() : -1;
+}
+
+int roombateca_audio_stop(void) {
+	return audio_disponible ? audio_stop() : -1;
+}
+
+int roombateca_audio_set_volume(int volume) {
+	return audio_disponible ? audio_set_volume(volume) : -1;
+}
+
+audio_estado_t roombateca_audio_get_state(void) {
+	return audio_disponible ? audio_get_state() : AUDIO_STOP;
+}
+
+int roombateca_audio_get_volume(void) {
+	return audio_disponible ? audio_get_volume() : -1;
+}
+
+int roombateca_audio_obstacle_alert(void) {
+	audio_estado_t previous_state;
+	int result;
+
+	if (!audio_disponible) return -1;
+	previous_state = audio_get_state();
+	if (previous_state == AUDIO_PLAY) {
+		if (audio_pause() != 0) return -1;
+	}
+	result = play_notification_wait(AUDIO_ALERTA);
+	if (result == 0 && previous_state == AUDIO_PLAY) {
+		result = audio_resume();
+	}
+	return result;
+}
+
+bool roombateca_audio_available(void) {
+	return audio_disponible != 0;
 }
 
 int roombateca_read_sensors(float distances[SENSOR_CANTIDAD], bool valid[SENSOR_CANTIDAD]) {

@@ -37,6 +37,7 @@ struct control_context {
     cJSON *state;
     odometria_t odometria;
     mapa_t mapa;
+    bool obstacle_was_active;
 };
 
 static void stop_logic(int signal_number) {
@@ -166,7 +167,26 @@ static void update_reported_map(cJSON *reported, const mapa_t *mapa) {
     }
 }
 
-static void control_tick(cJSON *state, odometria_t *odometria, mapa_t *mapa) {
+static bool obstacle_detected(const float distances[SENSOR_CANTIDAD],
+                              const bool valid[SENSOR_CANTIDAD]);
+
+static void sync_reported_audio(cJSON *reported) {
+    cJSON *audio = cJSON_GetObjectItemCaseSensitive(reported, "audio");
+    const char *status;
+    audio_estado_t state;
+
+    if (!roombateca_audio_available() || !cJSON_IsObject(audio)) return;
+    state = roombateca_audio_get_state();
+    status = state == AUDIO_PLAY ? "playing"
+        : state == AUDIO_PAUSA ? "paused" : "stopped";
+    replace_item(audio, "status", cJSON_CreateString(status));
+    if (roombateca_audio_get_volume() >= 0) {
+        replace_item(audio, "volume", cJSON_CreateNumber(roombateca_audio_get_volume()));
+    }
+}
+
+static void control_tick(cJSON *state, odometria_t *odometria, mapa_t *mapa,
+                         bool *obstacle_was_active) {
     float distances[SENSOR_CANTIDAD];
     bool sensor_valid[SENSOR_CANTIDAD];
     encoder_lectura_t encoder_readings[ENCODER_CANTIDAD];
@@ -177,6 +197,17 @@ static void control_tick(cJSON *state, odometria_t *odometria, mapa_t *mapa) {
     if (!cJSON_IsObject(reported) || !cJSON_IsArray(sensors)) return;
         if (roombateca_read_sensors(distances, sensor_valid) != 0
             || roombateca_read_encoders(encoder_readings) != 0) return;
+
+        {
+            bool obstacle_active = obstacle_detected(distances, sensor_valid);
+            bool trigger_alert = obstacle_active && !*obstacle_was_active;
+            *obstacle_was_active = obstacle_active;
+            if (trigger_alert) {
+                pthread_mutex_unlock(&state_mutex);
+                roombateca_audio_obstacle_alert();
+                pthread_mutex_lock(&state_mutex);
+            }
+        }
 
     if (odometria_actualizar(odometria,
                              &encoder_readings[ENCODER_IZQUIERDO],
@@ -211,7 +242,18 @@ static void control_tick(cJSON *state, odometria_t *odometria, mapa_t *mapa) {
         set_number(reported_pose, "yMm", pose->y_mm);
         set_number(reported_pose, "thetaRad", pose->theta_rad);
     }
+    sync_reported_audio(reported);
     update_reported_map(reported, mapa);
+}
+
+static bool obstacle_detected(const float distances[SENSOR_CANTIDAD],
+                              const bool valid[SENSOR_CANTIDAD]) {
+    int sensor;
+
+    for (sensor = 0; sensor < SENSOR_CANTIDAD; ++sensor) {
+        if (valid[sensor] && distances[sensor] < 20.0f) return true;
+    }
+    return false;
 }
 
 static void *control_thread_main(void *argument) {
@@ -232,7 +274,8 @@ static void *control_thread_main(void *argument) {
                 stop_state(context->state);
                 watchdog_stopped = true;
             }
-            control_tick(context->state, &context->odometria, &context->mapa);
+            control_tick(context->state, &context->odometria, &context->mapa,
+                         &context->obstacle_was_active);
             char *after = cJSON_PrintUnformatted(context->state);
             if (before != NULL && after != NULL && strcmp(before, after) != 0) state_generation++;
             free(before);
@@ -303,27 +346,45 @@ static bool apply_desired_state(cJSON *state, const cJSON *patch) {
         const cJSON *volume = cJSON_GetObjectItemCaseSensitive(audio, "volume");
         if (cJSON_IsObject(desired_audio) && cJSON_IsObject(reported_audio)) {
             if (string_is_one_of(action, actions, 5)) {
-                const char *status = NULL;
                 cJSON *track = cJSON_GetObjectItemCaseSensitive(reported_audio, "track");
                 cJSON *tracks = cJSON_GetObjectItemCaseSensitive(reported_audio, "tracks");
-                replace_item(desired_audio, "action", cJSON_Duplicate(action, true));
-                if (strcmp(action->valuestring, "PLAY") == 0) status = "playing";
-                else if (strcmp(action->valuestring, "PAUSE") == 0) status = "paused";
-                else if (strcmp(action->valuestring, "STOP") == 0) status = "stopped";
-                else if (cJSON_IsNumber(track) && cJSON_IsArray(tracks) && cJSON_GetArraySize(tracks) > 0) {
+                int requested_track = cJSON_IsNumber(track) ? track->valueint : 0;
+                int count = cJSON_IsArray(tracks) ? cJSON_GetArraySize(tracks) : 0;
+                int audio_result = -1;
+                const char *status = NULL;
+
+                if (strcmp(action->valuestring, "PLAY") == 0 && count > 0) {
+                    audio_result = roombateca_audio_play_track(requested_track);
+                    status = "playing";
+                } else if (strcmp(action->valuestring, "PAUSE") == 0) {
+                    audio_result = roombateca_audio_pause();
+                    status = "paused";
+                } else if (strcmp(action->valuestring, "STOP") == 0) {
+                    audio_result = roombateca_audio_stop();
+                    status = "stopped";
+                } else if ((strcmp(action->valuestring, "NEXT") == 0
+                            || strcmp(action->valuestring, "PREV") == 0)
+                        && count > 0) {
                     int count = cJSON_GetArraySize(tracks);
                     int next_track = strcmp(action->valuestring, "NEXT") == 0
                         ? (track->valueint + 1) % count
                         : (track->valueint + count - 1) % count;
-                    replace_item(reported_audio, "track", cJSON_CreateNumber(next_track));
+                    audio_result = roombateca_audio_play_track(next_track);
+                    if (audio_result == 0) replace_item(reported_audio, "track", cJSON_CreateNumber(next_track));
+                    status = "playing";
                 }
-                if (status != NULL) replace_item(reported_audio, "status", cJSON_CreateString(status));
-                changed = true;
+                if (audio_result == 0) {
+                    replace_item(desired_audio, "action", cJSON_Duplicate(action, true));
+                    if (status != NULL) replace_item(reported_audio, "status", cJSON_CreateString(status));
+                    changed = true;
+                }
             }
             if (cJSON_IsNumber(volume) && volume->valuedouble >= 0 && volume->valuedouble <= 100) {
-                replace_item(desired_audio, "volume", cJSON_CreateNumber(volume->valueint));
-                replace_item(reported_audio, "volume", cJSON_CreateNumber(volume->valueint));
-                changed = true;
+                if (roombateca_audio_set_volume(volume->valueint) == 0) {
+                    replace_item(desired_audio, "volume", cJSON_CreateNumber(volume->valueint));
+                    replace_item(reported_audio, "volume", cJSON_CreateNumber(volume->valueint));
+                    changed = true;
+                }
             }
         }
     }
