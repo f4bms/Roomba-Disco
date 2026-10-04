@@ -16,15 +16,18 @@ typedef enum {
  * decir /usr/share/roomba-disco/audio/ en el target.
  * Se usan rutas absolutas y no relativas 
  */
+#ifndef AUDIO_DIR
 #define AUDIO_DIR "/usr/share/roomba-disco/audio/"
+#endif
 
 // Sonidos de notificacion
 #define AUDIO_INICIO_SYS    AUDIO_DIR "arranque.mp3"
 #define AUDIO_AUTO_MODE     AUDIO_DIR "pirin.mp3"
 #define AUDIO_ALERTA        AUDIO_DIR "alerta.mp3"
 #define AUDIO_MANUAL_MODE   AUDIO_DIR "ding.mp3"
-// Musica una pista por ahora
-#define AUDIO_MUSICA        AUDIO_DIR "MrTaxiCut.mp3"
+#define AUDIO_TRACK_1       AUDIO_DIR "1.mp3"
+#define AUDIO_TRACK_2       AUDIO_DIR "2.mp3"
+#define AUDIO_TRACK_3       AUDIO_DIR "3.mp3"
 
 // Inicializa el sys de audio. 
 int audio_control_init(void);
@@ -34,6 +37,7 @@ void audio_control_cleanup(void);
 
 //* Sonidos de notificación
 void trigger_notification_audio(const char *path);
+int play_notification_wait(const char *path);
 
 // Canal de música: una pista a la vez 
 //con audio_play(cancion) reemplaza la actual, ahorita solo hay una pista

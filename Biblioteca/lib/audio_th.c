@@ -58,6 +58,10 @@ static int iniciar_proceso_mpg123(pid_t *pid_out, int *stdin_fd_out, int *stdout
     int out_pipe[2]; //salida del mpg123 su "stdout"
     pid_t pid; //proceso
 
+    if (access(MPG123_BIN, X_OK) != 0) {
+        return -errno;
+    }
+
     if (pipe(in_pipe) != 0) {
         return -errno;
     }
@@ -84,7 +88,6 @@ static int iniciar_proceso_mpg123(pid_t *pid_out, int *stdin_fd_out, int *stdout
         close(in_pipe[1]);
         close(out_pipe[0]);
         close(out_pipe[1]);
-        //redirecciona error en caso del mismo
         int devnull = open("/dev/null", O_WRONLY);
         if (devnull >= 0) {
             dup2(devnull, STDERR_FILENO);
@@ -331,4 +334,26 @@ void trigger_notification_audio(const char *path) {
         return;
     }
     pthread_detach(hilo);
+}
+
+int play_notification_wait(const char *path) {
+    pid_t pid;
+
+    if (path == NULL) return -EINVAL;
+    if (access(MPG123_BIN, X_OK) != 0) return -errno;
+    pid = fork();
+    if (pid < 0) return -errno;
+    if (pid == 0) {
+        int devnull = open("/dev/null", O_RDWR);
+        if (devnull >= 0) {
+            dup2(devnull, STDIN_FILENO);
+            dup2(devnull, STDOUT_FILENO);
+            dup2(devnull, STDERR_FILENO);
+            close(devnull);
+        }
+        execlp(MPG123_BIN, MPG123_BIN, "-q", path, (char *)NULL);
+        _exit(127);
+    }
+    if (waitpid(pid, NULL, 0) < 0) return -errno;
+    return 0;
 }

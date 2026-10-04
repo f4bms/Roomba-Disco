@@ -1,15 +1,15 @@
 {
 	"type":	"state",
 	"protocolVersion":	1,
-	"revision":	4701,
+	"revision":	4824,
 	"desired":	{
 		"mode":	"MANUAL",
 		"motion":	{
 			"direction":	"STOP",
-			"speed":	300
+			"speed":	241
 		},
 		"audio":	{
-			"action":	"PLAY",
+			"action":	"PAUSE",
 			"volume":	79
 		}
 	},
@@ -18,32 +18,32 @@
 		"mode":	"MANUAL",
 		"motion":	{
 			"direction":	"STOP",
-			"speed":	300
+			"speed":	241
 		},
 		"audio":	{
-			"status":	"playing",
-			"volume":	79,
-			"track":	2,
+			"status":	"paused",
+			"volume":	100,
+			"track":	0,
 			"tracks":	["Pista 1", "Pista 2", "Pista 3"]
 		},
 		"sensors":	[{
 				"id":	1,
-				"distanceCm":	42,
-				"obstacle":	false
+				"distanceCm":	10,
+				"obstacle":	true
 			}, {
 				"id":	2,
-				"distanceCm":	42,
-				"obstacle":	false
+				"distanceCm":	10,
+				"obstacle":	true
 			}],
 		"map":	{
 			"width":	8,
 			"height":	6,
-			"cells":	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+			"cells":	[0, 0, 0, 0, 0, 2, 2, 2, 0, 0, 0, 0, 0, 2, 2, 2, 0, 0, 0, 2, 2, 2, 2, 2, 3, 3, 3, 2, 2, 2, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 		},
 		"pose":	{
-			"xMm":	-239.0922437810629,
-			"yMm":	-213.48459721444752,
-			"thetaRad":	2.1046352190000017
+			"xMm":	258.26757672904449,
+			"yMm":	-120.85506026625841,
+			"thetaRad":	2.8738023900204146
 		}
 	}
 }
