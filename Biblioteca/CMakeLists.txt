@@ -7,18 +7,21 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 find_package(Threads REQUIRED)
 
 option(ROOMBATECA_HARDWARE "Compilar soporte GPIO real" ON)
+option(ROOMBATECA_SIM_INJECT "Usar sensores inyectables via ROO_SIM_SENSORS_FILE (solo simulacion)" OFF)
 
 set(ROOMBATECA_SOURCES
     lib/motores.c
-    lib/sensores.c
     lib/encoders.c
     lib/leds.c
     lib/audio_th.c
-    lib/roombateca.c
 )
 
 if(ROOMBATECA_HARDWARE)
-    list(APPEND ROOMBATECA_SOURCES lib/gpio_control.c)
+    list(APPEND ROOMBATECA_SOURCES lib/gpio_control.c lib/sensores.c)
+elseif(ROOMBATECA_SIM_INJECT)
+    list(APPEND ROOMBATECA_SOURCES lib/sensores_inyectables.c)
+else()
+    list(APPEND ROOMBATECA_SOURCES lib/sensores.c)
 endif()
 
 add_library(roombateca SHARED
@@ -28,6 +31,14 @@ add_library(roombateca SHARED
 target_include_directories(roombateca PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
+
+if(ROOMBATECA_HARDWARE)
+    target_compile_definitions(roombateca PRIVATE ROOMBATECA_HARDWARE)
+endif()
+
+if(DEFINED ROOMBATECA_AUDIO_DIR)
+    target_compile_definitions(roombateca PRIVATE "AUDIO_DIR=\"${ROOMBATECA_AUDIO_DIR}/\"")
+endif()
 
 target_link_libraries(roombateca PRIVATE Threads::Threads)
 

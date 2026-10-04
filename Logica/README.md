@@ -261,6 +261,37 @@ envian snapshots identicos cada 100 ms; el periodo de 100 ms se conserva para
 leer hardware y actualizar el mapa, pero el socket solo transmite cuando hay
 un cambio observable.
 
+## Audio integrado
+
+Las acciones de audio pasan por `roombateca_control.c` y llegan a `audio_th`:
+
+```text
+PLAY/PAUSE/STOP/NEXT/PREV/volumen
+	|
+	v
+roombateca_control.c
+	|
+	v
+audio_th.c -> mpg123
+```
+
+Las pistas principales son `1.mp3`, `2.mp3` y `3.mp3`. Si `mpg123` no esta
+disponible, la logica continua funcionando para movimiento, sensores y mapa,
+pero las acciones de audio fallan sin falsear el estado reportado.
+
+Cuando aparece un obstaculo, la alerta se ejecuta solo una vez mientras el
+obstaculo permanezca detectado. Si la musica estaba reproduciendose:
+
+```text
+PAUSE musica
+reproducir alerta.mp3 hasta terminar
+RESUME musica
+```
+
+`PAUSE` conserva la posicion de la pista en `mpg123`, por lo que la musica
+continua desde el punto donde fue interrumpida. Cuando el obstaculo desaparece
+y vuelve a aparecer, la alerta puede dispararse nuevamente.
+
 La grilla actual es fija de `8 x 6`. La pose puede salir de esos limites, pero
 por ahora las posiciones fuera de la grilla no se agregan automaticamente.
 Para hacerla crecer habrá que implementar una grilla dinamica o ampliar la

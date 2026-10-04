@@ -78,6 +78,10 @@ target_include_directories(logica_simulador PRIVATE
 target_link_libraries(logica_simulador PRIVATE cjson roombateca pthread)
 target_compile_options(logica_simulador PRIVATE -Wall -Wextra -Wpedantic)
 
+if(DEFINED ROOMBATECA_AUDIO_DIR)
+    target_compile_definitions(logica_simulador PRIVATE "AUDIO_DIR=\"${ROOMBATECA_AUDIO_DIR}/\"")
+endif()
+
 enable_testing()
 add_executable(test_odometria
     ../Logica/odometria.c
