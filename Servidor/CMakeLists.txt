@@ -81,6 +81,7 @@ target_sources(logica_simulador PRIVATE
     ../Logica/roombateca_control.c
     ../Logica/odometria.c
     ../Logica/mapa.c
+    ../Logica/auto.c
 )
 target_include_directories(logica_simulador PRIVATE
     "${cjson_SOURCE_DIR}"
@@ -88,6 +89,10 @@ target_include_directories(logica_simulador PRIVATE
 )
 target_link_libraries(logica_simulador PRIVATE cjson roombateca pthread)
 target_compile_options(logica_simulador PRIVATE -Wall -Wextra -Wpedantic)
+
+if(DEFINED ROOMBATECA_AUDIO_DIR)
+    target_compile_definitions(logica_simulador PRIVATE "AUDIO_DIR=\"${ROOMBATECA_AUDIO_DIR}/\"")
+endif()
 
 enable_testing()
 add_executable(test_odometria
@@ -103,8 +108,8 @@ target_compile_options(test_odometria PRIVATE -Wall -Wextra -Wpedantic)
 add_test(NAME odometria COMMAND test_odometria)
 
 add_executable(test_encoders_sim
-    ../Biblioteca/lib/motores.c
-    ../Biblioteca/lib/encoders.c
+    ../Biblioteca/lib/sim/motores.c
+    ../Biblioteca/lib/sim/encoders.c
     ../Logica/test_encoders_sim.c
 )
 target_include_directories(test_encoders_sim PRIVATE
@@ -131,6 +136,17 @@ target_link_libraries(test_sha256 PRIVATE auth)
 target_compile_options(test_sha256 PRIVATE -Wall -Wextra -Wpedantic)
 add_test(NAME sha256 COMMAND test_sha256)
 
+add_executable(test_auto
+    ../Logica/auto.c
+    ../Logica/test_auto.c
+)
+target_include_directories(test_auto PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/../Biblioteca/include"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../Logica"
+)
+target_link_libraries(test_auto PRIVATE m)
+target_compile_options(test_auto PRIVATE -Wall -Wextra -Wpedantic)
+add_test(NAME auto COMMAND test_auto)
 target_include_directories(servidor PRIVATE
     third_party/civetweb/include
     "${cjson_SOURCE_DIR}"

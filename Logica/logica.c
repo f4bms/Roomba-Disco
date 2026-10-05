@@ -15,7 +15,9 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "auto.h"
 #include "cJSON.h"
+#include "leds.h"
 #include "mapa.h"
 #include "odometria.h"
 #include "roombateca_control.h"
@@ -32,11 +34,16 @@ static pthread_mutex_t state_mutex = PTHREAD_MUTEX_INITIALIZER;
 static uint64_t last_heartbeat_ns;
 static unsigned long state_generation = 1;
 static bool watchdog_stopped;
+//activar en cada cambio de modo para que AUTO arranque de 0
+static bool auto_reset_pending;
 
 struct control_context {
     cJSON *state;
     odometria_t odometria;
     mapa_t mapa;
+    bool obstacle_was_active;
+    auto_t auto_estado;
+    bool auto_activo;
 };
 
 static void stop_logic(int signal_number) {
@@ -133,6 +140,7 @@ static void stop_state(cJSON *state) {
     cJSON *reported_motion = cJSON_GetObjectItemCaseSensitive(reported, "motion");
 
     roombateca_set_motion("STOP", 0);
+	//roombateca_aspiradora_set(false); ~~~Apagamos la aspiradora~~~
     if (cJSON_IsObject(desired_motion)) {
         replace_item(desired_motion, "direction", cJSON_CreateString("STOP"));
         replace_item(desired_motion, "speed", cJSON_CreateNumber(0));
@@ -166,7 +174,53 @@ static void update_reported_map(cJSON *reported, const mapa_t *mapa) {
     }
 }
 
-static void control_tick(cJSON *state, odometria_t *odometria, mapa_t *mapa) {
+static bool obstacle_detected(const float distances[SENSOR_CANTIDAD],
+                              const bool valid[SENSOR_CANTIDAD]);
+
+static void sync_reported_audio(cJSON *reported) {
+    cJSON *audio = cJSON_GetObjectItemCaseSensitive(reported, "audio");
+    const char *status;
+    audio_estado_t state;
+
+    if (!roombateca_audio_available() || !cJSON_IsObject(audio)) return;
+    state = roombateca_audio_get_state();
+    status = state == AUDIO_PLAY ? "playing"
+        : state == AUDIO_PAUSA ? "paused" : "stopped";
+    replace_item(audio, "status", cJSON_CreateString(status));
+    if (roombateca_audio_get_volume() >= 0) {
+        replace_item(audio, "volume", cJSON_CreateNumber(roombateca_audio_get_volume()));
+    }
+}
+//Parte del modo autónomo
+//pregunta si estamos en el estado autónomo y revisa el JSON
+static bool state_is_auto(const cJSON *state) {
+    const cJSON *reported = cJSON_GetObjectItemCaseSensitive(state, "reported");
+    const cJSON *mode = cJSON_GetObjectItemCaseSensitive(reported, "mode");
+    return cJSON_IsString(mode) && strcmp(mode->valuestring, "AUTO") == 0;
+}
+//para enviar al cliente que se está moviendo, porque sino no se daría cuenta
+static void report_motion(cJSON *reported, const auto_orden_t *orden) {
+    cJSON *motion = cJSON_GetObjectItemCaseSensitive(reported, "motion");
+    if (!cJSON_IsObject(motion)) return;
+    replace_item(motion, "direction", cJSON_CreateString(orden->direccion));
+    replace_item(motion, "speed", cJSON_CreateNumber(orden->velocidad));
+}
+//Cuando ya "encuentra" el final del recorrido y se pasa a modo manual 
+static void finish_auto(cJSON *state) {
+    cJSON *desired = cJSON_GetObjectItemCaseSensitive(state, "desired");
+    cJSON *reported = cJSON_GetObjectItemCaseSensitive(state, "reported");
+    cJSON *revision = cJSON_GetObjectItemCaseSensitive(state, "revision");
+    stop_state(state);
+    if (cJSON_IsObject(desired)) replace_item(desired, "mode", cJSON_CreateString("MANUAL"));
+    if (cJSON_IsObject(reported)) replace_item(reported, "mode", cJSON_CreateString("MANUAL"));
+    roombateca_set_mode_leds("MANUAL");
+    replace_item(state, "revision",
+                 cJSON_CreateNumber(cJSON_IsNumber(revision) ? revision->valuedouble + 1 : 1));
+}
+//se le agrega al control del tick la parte del manejo en automático
+static void control_tick(cJSON *state, odometria_t *odometria, mapa_t *mapa,
+                         bool *obstacle_was_active,
+                         auto_t *auto_estado, bool *auto_activo) { //acá
     float distances[SENSOR_CANTIDAD];
     bool sensor_valid[SENSOR_CANTIDAD];
     encoder_lectura_t encoder_readings[ENCODER_CANTIDAD];
@@ -177,6 +231,20 @@ static void control_tick(cJSON *state, odometria_t *odometria, mapa_t *mapa) {
     if (!cJSON_IsObject(reported) || !cJSON_IsArray(sensors)) return;
         if (roombateca_read_sensors(distances, sensor_valid) != 0
             || roombateca_read_encoders(encoder_readings) != 0) return;
+
+        {
+            bool obstacle_active = obstacle_detected(distances, sensor_valid);
+            bool trigger_alert = obstacle_active && !*obstacle_was_active;
+            *obstacle_was_active = obstacle_active;
+            led_set(LED_ALERTA, obstacle_active);
+            if (trigger_alert) {
+                //para el mutex de alerta obstáculo
+                if (state_is_auto(state)) roombateca_set_motion("STOP", 0);
+                pthread_mutex_unlock(&state_mutex);
+                roombateca_audio_obstacle_alert();
+                pthread_mutex_lock(&state_mutex);
+            }
+        }
 
     if (odometria_actualizar(odometria,
                              &encoder_readings[ENCODER_IZQUIERDO],
@@ -191,6 +259,33 @@ static void control_tick(cJSON *state, odometria_t *odometria, mapa_t *mapa) {
     if (sensor_valid[SENSOR_TRASERO]) {
         mapa_observar(mapa, pose, 3.14159265358979323846, distances[SENSOR_TRASERO] * 10.0,
                       distances[SENSOR_TRASERO] < 20.0f);
+    }
+	//para manejo de bandera de cambio de modo
+    if (auto_reset_pending) {
+        *auto_activo = false;
+        auto_reset_pending = false;
+    }
+	//Si todavía esta en modo Auto y el cliente está up, aunque este en Auto no se mueve
+    if (state_is_auto(state) && !watchdog_stopped) {
+        auto_orden_t orden;
+        if (!*auto_activo) {
+            auto_reset(auto_estado);
+            *auto_activo = true;
+        }
+		//para el auto paso recibe todas las lecturas de los sensores
+        orden = auto_paso(auto_estado, pose,
+                              distances[SENSOR_FRONTAL], sensor_valid[SENSOR_FRONTAL],
+                              monotonic_now_ns());
+        if (auto_fin(auto_estado)) {
+            // TErmina el recorrido, entonces frena y devuelve el control al modo manual.
+            finish_auto(state);
+            *auto_activo = false;
+        } else if (roombateca_set_motion(orden.direccion, orden.velocidad) == 0) {
+            report_motion(reported, &orden);
+            //roombateca_aspiradora_set(true); ~~~Encendemos la aspiradora~~~
+        }
+    } else {
+        *auto_activo = false;
     }
 
     for (sensor = 0; sensor < SENSOR_CANTIDAD && sensor < cJSON_GetArraySize(sensors); ++sensor) {
@@ -211,7 +306,18 @@ static void control_tick(cJSON *state, odometria_t *odometria, mapa_t *mapa) {
         set_number(reported_pose, "yMm", pose->y_mm);
         set_number(reported_pose, "thetaRad", pose->theta_rad);
     }
+    sync_reported_audio(reported);
     update_reported_map(reported, mapa);
+}
+
+static bool obstacle_detected(const float distances[SENSOR_CANTIDAD],
+                              const bool valid[SENSOR_CANTIDAD]) {
+    int sensor;
+
+    for (sensor = 0; sensor < SENSOR_CANTIDAD; ++sensor) {
+        if (valid[sensor] && distances[sensor] < 20.0f) return true;
+    }
+    return false;
 }
 
 static void *control_thread_main(void *argument) {
@@ -232,7 +338,9 @@ static void *control_thread_main(void *argument) {
                 stop_state(context->state);
                 watchdog_stopped = true;
             }
-            control_tick(context->state, &context->odometria, &context->mapa);
+            control_tick(context->state, &context->odometria, &context->mapa,
+                         &context->obstacle_was_active,
+                         &context->auto_estado, &context->auto_activo);
             char *after = cJSON_PrintUnformatted(context->state);
             if (before != NULL && after != NULL && strcmp(before, after) != 0) state_generation++;
             free(before);
@@ -257,12 +365,24 @@ static bool apply_desired_state(cJSON *state, const cJSON *patch) {
     if (!cJSON_IsObject(desired) || !cJSON_IsObject(reported)) return false;
 
     if (string_is_one_of(mode, modes, 2)) {
+		//compara el modo del JSON vs el pedido a ver si es MANUAL o AUTO
+        const cJSON *current_mode = cJSON_GetObjectItemCaseSensitive(reported, "mode");
+        bool mode_changed = !cJSON_IsString(current_mode)
+            || strcmp(current_mode->valuestring, mode->valuestring) != 0;
+        // Cambio de modo, se frena luego se actualiza: el recorrido automatico empieza en cero
+        if (mode_changed) {
+            stop_state(state);
+            auto_reset_pending = true;
+            roombateca_audio_notify_mode(mode->valuestring);
+        }
         replace_item(desired, "mode", cJSON_Duplicate(mode, true));
         replace_item(reported, "mode", cJSON_Duplicate(mode, true));
+        roombateca_set_mode_leds(mode->valuestring);
         changed = true;
     }
 
-    if (cJSON_IsObject(motion)) {
+    //En AUTO el movimiento lo decide auto_paso() y se ignoran los comandos manuales.
+    if (cJSON_IsObject(motion) && !state_is_auto(state)) {
         cJSON *desired_motion = cJSON_GetObjectItemCaseSensitive(desired, "motion");
         cJSON *reported_motion = cJSON_GetObjectItemCaseSensitive(reported, "motion");
         const cJSON *direction = cJSON_GetObjectItemCaseSensitive(motion, "direction");
@@ -303,27 +423,45 @@ static bool apply_desired_state(cJSON *state, const cJSON *patch) {
         const cJSON *volume = cJSON_GetObjectItemCaseSensitive(audio, "volume");
         if (cJSON_IsObject(desired_audio) && cJSON_IsObject(reported_audio)) {
             if (string_is_one_of(action, actions, 5)) {
-                const char *status = NULL;
                 cJSON *track = cJSON_GetObjectItemCaseSensitive(reported_audio, "track");
                 cJSON *tracks = cJSON_GetObjectItemCaseSensitive(reported_audio, "tracks");
-                replace_item(desired_audio, "action", cJSON_Duplicate(action, true));
-                if (strcmp(action->valuestring, "PLAY") == 0) status = "playing";
-                else if (strcmp(action->valuestring, "PAUSE") == 0) status = "paused";
-                else if (strcmp(action->valuestring, "STOP") == 0) status = "stopped";
-                else if (cJSON_IsNumber(track) && cJSON_IsArray(tracks) && cJSON_GetArraySize(tracks) > 0) {
+                int requested_track = cJSON_IsNumber(track) ? track->valueint : 0;
+                int count = cJSON_IsArray(tracks) ? cJSON_GetArraySize(tracks) : 0;
+                int audio_result = -1;
+                const char *status = NULL;
+
+                if (strcmp(action->valuestring, "PLAY") == 0 && count > 0) {
+                    audio_result = roombateca_audio_play_track(requested_track);
+                    status = "playing";
+                } else if (strcmp(action->valuestring, "PAUSE") == 0) {
+                    audio_result = roombateca_audio_pause();
+                    status = "paused";
+                } else if (strcmp(action->valuestring, "STOP") == 0) {
+                    audio_result = roombateca_audio_stop();
+                    status = "stopped";
+                } else if ((strcmp(action->valuestring, "NEXT") == 0
+                            || strcmp(action->valuestring, "PREV") == 0)
+                        && count > 0) {
                     int count = cJSON_GetArraySize(tracks);
                     int next_track = strcmp(action->valuestring, "NEXT") == 0
                         ? (track->valueint + 1) % count
                         : (track->valueint + count - 1) % count;
-                    replace_item(reported_audio, "track", cJSON_CreateNumber(next_track));
+                    audio_result = roombateca_audio_play_track(next_track);
+                    if (audio_result == 0) replace_item(reported_audio, "track", cJSON_CreateNumber(next_track));
+                    status = "playing";
                 }
-                if (status != NULL) replace_item(reported_audio, "status", cJSON_CreateString(status));
-                changed = true;
+                if (audio_result == 0) {
+                    replace_item(desired_audio, "action", cJSON_Duplicate(action, true));
+                    if (status != NULL) replace_item(reported_audio, "status", cJSON_CreateString(status));
+                    changed = true;
+                }
             }
             if (cJSON_IsNumber(volume) && volume->valuedouble >= 0 && volume->valuedouble <= 100) {
-                replace_item(desired_audio, "volume", cJSON_CreateNumber(volume->valueint));
-                replace_item(reported_audio, "volume", cJSON_CreateNumber(volume->valueint));
-                changed = true;
+                if (roombateca_audio_set_volume(volume->valueint) == 0) {
+                    replace_item(desired_audio, "volume", cJSON_CreateNumber(volume->valueint));
+                    replace_item(reported_audio, "volume", cJSON_CreateNumber(volume->valueint));
+                    changed = true;
+                }
             }
         }
     }
@@ -441,6 +579,8 @@ static void serve_client(int client_socket, cJSON *state, const char *state_path
     }
     pthread_mutex_lock(&state_mutex);
     stop_state(state);
+	//si el cliente no hace ping el modo AUTO no se mueve
+    watchdog_stopped = true;  
     state_generation++;
     pthread_mutex_unlock(&state_mutex);
 }
@@ -498,6 +638,13 @@ int main(int argc, char **argv) {
         fprintf(stderr, "no se pudo inicializar el control de motores\n");
         cJSON_Delete(state);
         return EXIT_FAILURE;
+    }
+    auto_init(&control.auto_estado);
+
+    {
+        cJSON *reported = cJSON_GetObjectItemCaseSensitive(state, "reported");
+        cJSON *mode = cJSON_GetObjectItemCaseSensitive(reported, "mode");
+        if (cJSON_IsString(mode)) roombateca_set_mode_leds(mode->valuestring);
     }
 
     signal(SIGINT, stop_logic);

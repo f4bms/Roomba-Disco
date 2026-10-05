@@ -249,17 +249,66 @@ ctest --test-dir Servidor/build-sim --output-on-failure \
   -R 'odometria|encoders_sim'
 ```
 
+## Control autonomo
+
+Con `mode = AUTO`, `control_tick()` llama a `auto_paso()`
+(`Logica/auto.c`), una maquina de estados que avanza en forma de "S" por la habitacion.
+Inicia buscando una esquina para luego iniciar su recorrido.
+
+```text
+esquina: pared -> giro der 90 -> pared
+barrido: fila -> obstaculo -> giro 90 -> mover 12 cm -> giro 90 -> fila ...
+         (el lado del giro alterna derecha/izquierda en cada vuelta, de manera que mapea en forma de "S".
+fin:     el movimiento lateral ya no cabe o la fila sale casi vacia
+```
+
+Al terminar, el robot se detiene y vuelve a modo `MANUAL`. 
+En `AUTO` se ignoran los comandos manuales. 
+Cambiar de modo siempre frena los motores.
+Los parametros (velocidades, paso entre filas, umbrales) estan en `auto.h`.
+Tiene una prueba `test_auto` que simula una "habitacion" y comprueba que tanto cubre el suelo.
+
 ## Que falta
 
 Esta etapa todavia no implementa:
 
-- control autonomo;
 - calibracion con medidas fisicas reales.
 
 La publicacion hacia el servidor se hace solo cuando cambia el estado. No se
 envian snapshots identicos cada 100 ms; el periodo de 100 ms se conserva para
 leer hardware y actualizar el mapa, pero el socket solo transmite cuando hay
 un cambio observable.
+
+## Audio integrado
+
+Las acciones de audio pasan por `roombateca_control.c` y llegan a `audio_th`:
+
+```text
+PLAY/PAUSE/STOP/NEXT/PREV/volumen
+	|
+	v
+roombateca_control.c
+	|
+	v
+audio_th.c -> mpg123
+```
+
+Las pistas principales son `1.mp3`, `2.mp3` y `3.mp3`. Si `mpg123` no esta
+disponible, la logica continua funcionando para movimiento, sensores y mapa,
+pero las acciones de audio fallan sin falsear el estado reportado.
+
+Cuando aparece un obstaculo, la alerta se ejecuta solo una vez mientras el
+obstaculo permanezca detectado. Si la musica estaba reproduciendose:
+
+```text
+PAUSE musica
+reproducir alerta.mp3 hasta terminar
+RESUME musica
+```
+
+`PAUSE` conserva la posicion de la pista en `mpg123`, por lo que la musica
+continua desde el punto donde fue interrumpida. Cuando el obstaculo desaparece
+y vuelve a aparecer, la alerta puede dispararse nuevamente.
 
 La grilla actual es fija de `8 x 6`. La pose puede salir de esos limites, pero
 por ahora las posiciones fuera de la grilla no se agregan automaticamente.
