@@ -24,15 +24,18 @@ export class AudioPanelComponent {
   tracks: string[] = [];
   currentTrack: number | null = null;
 
-  // Estado local para pruebas: refleja el ultimo comando enviado.
   playing = false;
-  powered = true;
+  powered = false;
   volume = 50;
 
   constructor() {
     effect(() => {
       const state = this.socket.state();
-      if (state === null) return;
+      if (state === null) {
+        this.powered = false;
+        this.playing = false;
+        return;
+      }
       this.powered = state.reported.power;
       this.playing = state.reported.audio.status === 'playing';
       this.volume = state.reported.audio.volume;

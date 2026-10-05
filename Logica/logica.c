@@ -127,6 +127,26 @@ static void set_number(cJSON *object, const char *name, double value) {
     }
 }
 
+static void sync_reported_indicators(cJSON *state) {
+    int power = led_get(LED_ENCENDIDO);
+    int manual = led_get(LED_MANUAL);
+    int autonomous = led_get(LED_AUTONOMO);
+    int alert = led_get(LED_ALERTA);
+    cJSON *reported = cJSON_GetObjectItemCaseSensitive(state, "reported");
+    const char *mode_indicator = manual == 1 && autonomous == 0 ? "MANUAL"
+        : autonomous == 1 && manual == 0 ? "AUTO" : "OFF";
+    if (!cJSON_IsObject(reported)) return;
+    if (cJSON_GetObjectItemCaseSensitive(reported, "power"))
+        replace_item(reported, "power", cJSON_CreateBool(power == 1));
+    else cJSON_AddBoolToObject(reported, "power", power == 1);
+    if (cJSON_GetObjectItemCaseSensitive(reported, "modeIndicator"))
+        replace_item(reported, "modeIndicator", cJSON_CreateString(mode_indicator));
+    else cJSON_AddStringToObject(reported, "modeIndicator", mode_indicator);
+    if (cJSON_GetObjectItemCaseSensitive(reported, "alertIndicator"))
+        replace_item(reported, "alertIndicator", cJSON_CreateBool(alert == 1));
+    else cJSON_AddBoolToObject(reported, "alertIndicator", alert == 1);
+}
+
 static uint64_t monotonic_now_ns(void) {
     struct timespec now;
     clock_gettime(CLOCK_MONOTONIC, &now);
@@ -341,6 +361,7 @@ static void *control_thread_main(void *argument) {
             control_tick(context->state, &context->odometria, &context->mapa,
                          &context->obstacle_was_active,
                          &context->auto_estado, &context->auto_activo);
+            sync_reported_indicators(context->state);
             char *after = cJSON_PrintUnformatted(context->state);
             if (before != NULL && after != NULL && strcmp(before, after) != 0) state_generation++;
             free(before);
@@ -508,9 +529,11 @@ static void process_message(int client_socket, cJSON *state, const char *state_p
         last_heartbeat_ns = monotonic_now_ns();
         watchdog_stopped = false;
     } else if (cJSON_IsString(type) && strcmp(type->valuestring, "get_state") == 0) {
+        sync_reported_indicators(state);
         send_state(client_socket, state);
     } else if (cJSON_IsString(type) && strcmp(type->valuestring, "set_state") == 0 && cJSON_IsObject(patch)) {
         if (apply_desired_state(state, patch)) {
+            sync_reported_indicators(state);
             if (!write_state(state_path, state)) perror("no se pudo guardar estado.json");
             state_generation++;
             send_state(client_socket, state);
@@ -532,6 +555,7 @@ static void serve_client(int client_socket, cJSON *state, const char *state_path
     pthread_mutex_lock(&state_mutex);
     last_heartbeat_ns = monotonic_now_ns();
     watchdog_stopped = false;
+    sync_reported_indicators(state);
     if (!send_state(client_socket, state)) {
         pthread_mutex_unlock(&state_mutex);
         return;
@@ -646,6 +670,7 @@ int main(int argc, char **argv) {
         cJSON *mode = cJSON_GetObjectItemCaseSensitive(reported, "mode");
         if (cJSON_IsString(mode)) roombateca_set_mode_leds(mode->valuestring);
     }
+    sync_reported_indicators(state);
 
     signal(SIGINT, stop_logic);
     signal(SIGTERM, stop_logic);

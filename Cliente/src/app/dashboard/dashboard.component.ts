@@ -34,10 +34,10 @@ export class DashboardComponent implements OnInit {
   readonly connectionStatus = this.socket.status;
   readonly serverAddress = this.socket.serverAddress;
 
-  // Habilitado para prueba aislada cliente-servidor; el valor real vendra de LED:POWER.
-  powered = true;
-  // Modo local para pruebas; la fuente de verdad sera MODE:STATUS desde Logica.
+  powered = false;
   mode: 'AUTO' | 'MANUAL' = 'MANUAL';
+  modeIndicator: 'AUTO' | 'MANUAL' | 'OFF' = 'OFF';
+  alertIndicator: boolean | null = null;
   speed = 0;
 
   // Sin datos hasta que Logica reporte SENSOR/LED a traves del servidor.
@@ -55,9 +55,20 @@ export class DashboardComponent implements OnInit {
     });
     effect(() => {
       const state = this.socket.state();
-      if (state === null) return;
+      if (state === null) {
+        this.powered = false;
+        this.modeIndicator = 'OFF';
+        this.alertIndicator = null;
+        this.sensors = [
+          { id: 1, distance: null, obstacle: null },
+          { id: 2, distance: null, obstacle: null },
+        ];
+        return;
+      }
       this.powered = state.reported.power;
       this.mode = state.reported.mode;
+      this.modeIndicator = state.reported.modeIndicator ?? 'OFF';
+      this.alertIndicator = state.reported.alertIndicator ?? null;
       this.speed = state.desired.motion.speed;
       this.sensors = state.reported.sensors.map(sensor => ({
         id: sensor.id,

@@ -17,6 +17,8 @@ export interface RobotState {
   reported: {
     power: boolean;
     mode: 'AUTO' | 'MANUAL';
+    modeIndicator?: 'AUTO' | 'MANUAL' | 'OFF';
+    alertIndicator?: boolean;
     motion: { direction: string; speed: number };
     audio: { status: 'playing' | 'paused' | 'stopped'; volume: number; track: number; tracks: string[] };
     sensors: Array<{ id: number; distanceCm: number; obstacle: boolean }>;
