@@ -70,6 +70,7 @@ target_sources(logica_simulador PRIVATE
     ../Logica/roombateca_control.c
     ../Logica/odometria.c
     ../Logica/mapa.c
+    ../Logica/auto.c
 )
 target_include_directories(logica_simulador PRIVATE
     "${cjson_SOURCE_DIR}"
@@ -96,7 +97,10 @@ target_compile_options(test_odometria PRIVATE -Wall -Wextra -Wpedantic)
 add_test(NAME odometria COMMAND test_odometria)
 
 add_executable(test_encoders_sim
-    ../Biblioteca/lib/sim/motores.c
+	//Cuando no estemos usando la simulación
+    //../Biblioteca/lib/motores.c
+    //../Biblioteca/lib/encoders.c
+	../Biblioteca/lib/sim/motores.c
     ../Biblioteca/lib/sim/encoders.c
     ../Logica/test_encoders_sim.c
 )
@@ -119,6 +123,19 @@ target_link_libraries(test_mapa PRIVATE m)
 target_compile_options(test_mapa PRIVATE -Wall -Wextra -Wpedantic)
 add_test(NAME mapa COMMAND test_mapa)
 
+//agregamos la parte del modo autonomo (Revisar bien)----------
+add_executable(test_auto
+    ../Logica/auto.c
+    ../Logica/test_auto.c
+)
+target_include_directories(test_auto PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/../Biblioteca/include"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../Logica"
+)
+target_link_libraries(test_auto PRIVATE m)
+target_compile_options(test_auto PRIVATE -Wall -Wextra -Wpedantic)
+add_test(NAME auto COMMAND test_auto)
+//--------------
 target_include_directories(servidor PRIVATE
     third_party/civetweb/include
 )
