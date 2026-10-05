@@ -140,7 +140,7 @@ static void stop_state(cJSON *state) {
     cJSON *reported_motion = cJSON_GetObjectItemCaseSensitive(reported, "motion");
 
     roombateca_set_motion("STOP", 0);
-	//roombateca_aspiradora_set(false); ~~~Apagamos la aspiradora~~~
+    roombateca_aspiradora_set(false);
     if (cJSON_IsObject(desired_motion)) {
         replace_item(desired_motion, "direction", cJSON_CreateString("STOP"));
         replace_item(desired_motion, "speed", cJSON_CreateNumber(0));
@@ -282,7 +282,7 @@ static void control_tick(cJSON *state, odometria_t *odometria, mapa_t *mapa,
             *auto_activo = false;
         } else if (roombateca_set_motion(orden.direccion, orden.velocidad) == 0) {
             report_motion(reported, &orden);
-            //roombateca_aspiradora_set(true); ~~~Encendemos la aspiradora~~~
+            roombateca_aspiradora_set(orden.aspirar);
         }
     } else {
         *auto_activo = false;

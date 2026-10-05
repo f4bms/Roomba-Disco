@@ -27,6 +27,7 @@ int roombateca_audio_get_volume(void);
 int roombateca_audio_obstacle_alert(void);
 bool roombateca_audio_available(void);
 void roombateca_audio_notify_mode(const char *mode);
+void roombateca_aspiradora_set(bool activa);
 
  #ifdef __cplusplus
  }

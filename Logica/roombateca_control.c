@@ -4,6 +4,7 @@
 #include "leds.h"
 #include "motores.h"
 #include "sensores.h"
+#include "succion.h"
 
 #include <string.h>
 
@@ -42,6 +43,7 @@ int roombateca_control_init(void) {
 		return -1;
 	}
 	led_set(LED_ENCENDIDO, true);
+	succion_init();
 	audio_disponible = audio_control_init() == 0;
 	if (audio_disponible) trigger_notification_audio(AUDIO_INICIO_SYS);
 	return 0;
@@ -50,6 +52,8 @@ int roombateca_control_init(void) {
 void roombateca_control_cleanup(void) {
 	audio_control_cleanup();
 	audio_disponible = 0;
+	succion_set(0);
+	succion_cleanup();
 	encoders_cleanup();
 	sensores_cleanup();
 	motor_control_cleanup();
@@ -111,6 +115,10 @@ int roombateca_audio_obstacle_alert(void) {
 
 bool roombateca_audio_available(void) {
 	return audio_disponible != 0;
+}
+
+void roombateca_aspiradora_set(bool activa) {
+	succion_set(activa ? SUCCION_POTENCIA_MAX : 0);
 }
 
 void roombateca_audio_notify_mode(const char *mode) {
