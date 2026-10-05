@@ -1,4 +1,5 @@
-import { Component, OnDestroy, OnInit, effect, inject } from '@angular/core';
+import { Component, OnInit, effect, inject } from '@angular/core';
+import { Router } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatSliderModule } from '@angular/material/slider';
@@ -26,9 +27,10 @@ interface SensorReading {
   templateUrl: './dashboard.component.html',
   styleUrl: './dashboard.component.scss',
 })
-export class DashboardComponent implements OnInit, OnDestroy {
+export class DashboardComponent implements OnInit {
 
   private readonly socket = inject(RobotSocketService);
+  private readonly router = inject(Router);
   readonly connectionStatus = this.socket.status;
   readonly serverAddress = this.socket.serverAddress;
 
@@ -46,6 +48,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
   map = { width: 8, height: 6, cells: Array.from({ length: 48 }, () => 0) };
 
   constructor() {
+    effect(() => {
+      if (this.socket.authState() !== 'autenticado') {
+        this.router.navigate(['/login']);
+      }
+    });
     effect(() => {
       const state = this.socket.state();
       if (state === null) return;
@@ -65,8 +72,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.socket.connect();
   }
 
-  ngOnDestroy() {
-    this.socket.disconnect();
+  logout() {
+    this.socket.logout();
   }
 
   applyServer(address: string) {

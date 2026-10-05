@@ -1,7 +1,9 @@
 import { Injectable } from '@angular/core';
 import { signal } from '@angular/core';
+import { solveAuthChallenge } from './sha256';
 
 export type ConnectionStatus = 'desconectado' | 'conectando' | 'conectado';
+export type AuthStatus = 'anonimo' | 'autenticando' | 'autenticado' | 'rechazado';
 
 export interface RobotState {
   type: 'state';
@@ -34,12 +36,17 @@ export class RobotSocketService {
   private static readonly SERVER_ADDRESS_KEY = 'roomba.serverAddress';
 
   readonly status = signal<ConnectionStatus>('desconectado');
+  readonly authState = signal<AuthStatus>('anonimo');
   readonly state = signal<RobotState | null>(null);
   readonly error = signal<string | null>(null);
   readonly serverAddress = signal<string>(this.loadServerAddress());
   private socket: WebSocket | null = null;
   private shouldReconnect = false;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private openResolvers: Array<{ resolve: () => void; reject: () => void }> = [];
+  private pendingLogin: ((ok: boolean) => void) | null = null;
+  private authUser = '';
+  private authPassword = '';
 
   connect() {
     if (typeof window === 'undefined') {
@@ -61,37 +68,85 @@ export class RobotSocketService {
     socket.onopen = () => {
       if (this.socket === socket) {
         this.status.set('conectado');
-        this.sendJson({ type: 'get_state' });
+        const resolvers = this.openResolvers;
+        this.openResolvers = [];
+        resolvers.forEach(resolver => resolver.resolve());
       }
     };
     socket.onmessage = event => {
+      let message: { type?: unknown; salt?: unknown; challenge?: unknown; ok?: unknown };
       try {
-        const message: unknown = JSON.parse(String(event.data));
-        if (this.isRobotState(message)) {
-          this.state.set(message);
-          this.error.set(null);
-        } else if (this.isErrorMessage(message)) {
-          this.error.set(message.message);
-        }
+        message = JSON.parse(String(event.data));
       } catch {
         this.error.set('El servidor envio un JSON invalido');
+        return;
+      }
+      if (message?.type === 'auth_challenge'
+          && typeof message.salt === 'string' && typeof message.challenge === 'string') {
+        const response = solveAuthChallenge(this.authPassword, message.salt, message.challenge);
+        this.sendJson({ type: 'auth_response', response });
+        return;
+      }
+      if (message?.type === 'auth_result') {
+        const ok = message.ok === true;
+        this.authPassword = '';
+        this.authState.set(ok ? 'autenticado' : 'rechazado');
+        if (ok) {
+          this.error.set(null);
+          this.sendJson({ type: 'get_state' });
+        }
+        this.resolvePendingLogin(ok);
+        return;
+      }
+      if (this.isRobotState(message)) {
+        this.state.set(message);
+        this.error.set(null);
+      } else if (this.isErrorMessage(message)) {
+        this.error.set(message.message);
       }
     };
     socket.onclose = () => {
       if (this.socket === socket) {
         this.status.set('desconectado');
         this.socket = null;
+        this.authState.set('anonimo');
+        this.state.set(null);
+        this.rejectPendingOpen();
+        this.resolvePendingLogin(false);
         this.scheduleReconnect();
       }
     };
     socket.onerror = () => {
       if (this.socket === socket) {
         this.status.set('desconectado');
+        this.rejectPendingOpen();
       }
     };
   }
 
+  async login(user: string, password: string): Promise<boolean> {
+    this.authUser = user;
+    this.authPassword = password;
+    this.authState.set('autenticando');
+    try {
+      await this.ensureOpen();
+    } catch {
+      this.authPassword = '';
+      this.authState.set('rechazado');
+      return false;
+    }
+    this.sendJson({ type: 'auth_init', user });
+    return new Promise<boolean>(resolve => { this.pendingLogin = resolve; });
+  }
+
+  logout() {
+    this.authState.set('anonimo');
+    this.state.set(null);
+    this.disconnect();
+  }
+
   sendDesired(desired: DesiredStatePatch): boolean {
+    if (this.authState() !== 'autenticado') return false;
     return this.sendJson({ type: 'set_state', desired });
   }
 
@@ -155,6 +210,28 @@ export class RobotSocketService {
       this.socket.close();
       this.socket = null;
     }
+    this.rejectPendingOpen();
+    this.resolvePendingLogin(false);
+  }
+
+  private ensureOpen(): Promise<void> {
+    if (this.socket?.readyState === WebSocket.OPEN) return Promise.resolve();
+    return new Promise<void>((resolve, reject) => {
+      this.openResolvers.push({ resolve, reject });
+      this.connect();
+    });
+  }
+
+  private rejectPendingOpen() {
+    const resolvers = this.openResolvers;
+    this.openResolvers = [];
+    resolvers.forEach(resolver => resolver.reject());
+  }
+
+  private resolvePendingLogin(ok: boolean) {
+    const resolve = this.pendingLogin;
+    this.pendingLogin = null;
+    if (resolve) resolve(ok);
   }
 
   private scheduleReconnect() {

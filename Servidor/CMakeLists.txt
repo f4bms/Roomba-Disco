@@ -60,6 +60,17 @@ target_compile_definitions(civetweb PRIVATE
 
 target_link_libraries(civetweb PRIVATE pthread)
 
+add_library(auth STATIC
+    auth/sha256.c
+    auth/auth.c
+)
+target_include_directories(auth PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/auth")
+target_compile_options(auth PRIVATE -Wall -Wextra -Wpedantic)
+
+add_executable(crear_usuario auth/crear_usuario.c)
+target_link_libraries(crear_usuario PRIVATE auth)
+target_compile_options(crear_usuario PRIVATE -Wall -Wextra -Wpedantic)
+
 add_executable(servidor servidor.c)
 if(BUILD_CLIENT)
     add_dependencies(servidor cliente_web)
@@ -97,10 +108,7 @@ target_compile_options(test_odometria PRIVATE -Wall -Wextra -Wpedantic)
 add_test(NAME odometria COMMAND test_odometria)
 
 add_executable(test_encoders_sim
-	//Cuando no estemos usando la simulación
-    //../Biblioteca/lib/motores.c
-    //../Biblioteca/lib/encoders.c
-	../Biblioteca/lib/sim/motores.c
+    ../Biblioteca/lib/sim/motores.c
     ../Biblioteca/lib/sim/encoders.c
     ../Logica/test_encoders_sim.c
 )
@@ -123,7 +131,11 @@ target_link_libraries(test_mapa PRIVATE m)
 target_compile_options(test_mapa PRIVATE -Wall -Wextra -Wpedantic)
 add_test(NAME mapa COMMAND test_mapa)
 
-//agregamos la parte del modo autonomo (Revisar bien)----------
+add_executable(test_sha256 auth/test_sha256.c)
+target_link_libraries(test_sha256 PRIVATE auth)
+target_compile_options(test_sha256 PRIVATE -Wall -Wextra -Wpedantic)
+add_test(NAME sha256 COMMAND test_sha256)
+
 add_executable(test_auto
     ../Logica/auto.c
     ../Logica/test_auto.c
@@ -135,12 +147,12 @@ target_include_directories(test_auto PRIVATE
 target_link_libraries(test_auto PRIVATE m)
 target_compile_options(test_auto PRIVATE -Wall -Wextra -Wpedantic)
 add_test(NAME auto COMMAND test_auto)
-//--------------
 target_include_directories(servidor PRIVATE
     third_party/civetweb/include
+    "${cjson_SOURCE_DIR}"
 )
 
-target_link_libraries(servidor PRIVATE civetweb pthread)
+target_link_libraries(servidor PRIVATE civetweb auth cjson pthread)
 
 target_compile_options(servidor PRIVATE
     -Wall
@@ -149,6 +161,7 @@ target_compile_options(servidor PRIVATE
 )
 
 install(TARGETS servidor RUNTIME DESTINATION bin)
+install(TARGETS crear_usuario RUNTIME DESTINATION bin)
 install(TARGETS logica_simulador RUNTIME DESTINATION bin)
 if(BUILD_CLIENT)
     install(DIRECTORY "${CLIENT_DIST_DIR}/" DESTINATION share/roomba-disco/www)
