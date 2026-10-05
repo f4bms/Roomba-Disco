@@ -43,6 +43,7 @@ int roombateca_control_init(void) {
 	}
 	led_set(LED_ENCENDIDO, true);
 	audio_disponible = audio_control_init() == 0;
+	if (audio_disponible) trigger_notification_audio(AUDIO_INICIO_SYS);
 	return 0;
 }
 
@@ -110,6 +111,12 @@ int roombateca_audio_obstacle_alert(void) {
 
 bool roombateca_audio_available(void) {
 	return audio_disponible != 0;
+}
+
+void roombateca_audio_notify_mode(const char *mode) {
+	if (!audio_disponible || mode == NULL) return;
+	trigger_notification_audio(strcmp(mode, "AUTO") == 0
+		? AUDIO_AUTO_MODE : AUDIO_MANUAL_MODE);
 }
 
 int roombateca_read_sensors(float distances[SENSOR_CANTIDAD], bool valid[SENSOR_CANTIDAD]) {

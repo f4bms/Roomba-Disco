@@ -26,6 +26,7 @@ audio_estado_t roombateca_audio_get_state(void);
 int roombateca_audio_get_volume(void);
 int roombateca_audio_obstacle_alert(void);
 bool roombateca_audio_available(void);
+void roombateca_audio_notify_mode(const char *mode);
 
  #ifdef __cplusplus
  }

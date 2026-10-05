@@ -373,6 +373,7 @@ static bool apply_desired_state(cJSON *state, const cJSON *patch) {
         if (mode_changed) {
             stop_state(state);
             auto_reset_pending = true;
+            roombateca_audio_notify_mode(mode->valuestring);
         }
         replace_item(desired, "mode", cJSON_Duplicate(mode, true));
         replace_item(reported, "mode", cJSON_Duplicate(mode, true));

@@ -37,9 +37,10 @@ extern "C" {
 #define AUTO_GIRO_ANTICIPO_RAD 0.0   // parar para compensar inercia
 
 //NS es de nanosegundos por el reloj que estamos usando
-#define AUTO_PAUSA_NS         300000000ULL  // parada entre maniobras (0.3s)
-#define AUTO_TIMEOUT_GIRO_NS 4000000000ULL  // 4s
-#define AUTO_TIMEOUT_MOVER_NS 3000000000ULL // 3s
+#define AUTO_PAUSA_NS           300000000ULL  // parada entre maniobras (0.3s)
+#define AUTO_TIMEOUT_AVANZAR_NS 30000000000ULL // 30s - el sensor no agarró nada
+#define AUTO_TIMEOUT_GIRO_NS   4000000000ULL  // 4s
+#define AUTO_TIMEOUT_MOVER_NS  3000000000ULL  // 3s
 
 typedef enum {
     AUTO_AVANZAR = 0,   // fila: recto hasta obstaculo

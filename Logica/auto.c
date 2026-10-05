@@ -123,6 +123,8 @@ auto_orden_t auto_paso(auto_t *a, const odometria_pose_t *pose,
                 }
             }
             parar_y_luego(a, AUTO_GIRAR, pose, ahora_ns);
+        } else if (transcurrido >= AUTO_TIMEOUT_AVANZAR_NS) {
+            ir_a_fin(a, pose, ahora_ns);       /* sensor no detecto obstaculo en 30s: falla */
         }
         break;
 	//parar: se detiene y prepara para girar(la mayoría del tiempo)
