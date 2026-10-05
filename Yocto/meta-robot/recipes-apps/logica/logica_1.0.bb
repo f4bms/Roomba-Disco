@@ -12,6 +12,8 @@ FILESEXTRAPATHS:prepend := "${THISDIR}/../../../../Logica:"
 SRC_URI = "file://logica.c \
            file://roombateca_control.c \
            file://roombateca_control.h \
+           file://auto.c \
+           file://auto.h \
            file://odometria.c \
            file://odometria.h \
            file://mapa.c \
@@ -24,7 +26,7 @@ S = "${WORKDIR}"
 
 do_compile() {
     ${CC} ${CFLAGS} -I${STAGING_INCDIR}/cjson -I${S} \
-        logica.c roombateca_control.c odometria.c mapa.c \
+        logica.c roombateca_control.c auto.c odometria.c mapa.c \
         ${LDFLAGS} -lcjson -lroombateca -lpthread -lm -o logica
 }
 
