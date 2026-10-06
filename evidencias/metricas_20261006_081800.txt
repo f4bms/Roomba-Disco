@@ -1,0 +1,124 @@
+==============================================================
+ ~~~~~   MÉTRICAS - Roomba-Disco   ~~~~~
+==============================================================
+--------------------------------------------------------------
+ SISTEMA ACTUAL:
+--------------------------------------------------------------
+Fecha (de la rasp):  Tue Oct  6 08:18:00 UTC 2026
+Placa:           Raspberry Pi 4 Model B Rev 1.2
+Kernel:          Linux 6.6.63-v8 (aarch64)
+Núcleos:         4
+Uptime:          239.24 s
+Carga (1/5/15):  0.10 0.08 0.03
+
+--------------------------------------------------------------
+ 1. TAMAÑO DEL ROOTFS
+--------------------------------------------------------------
+Partición raíz (df -k /): total 160.66 MB, usado 80.35 MB
+Contenido real (du -xsk /): 56.19 MB
+Referencia <= 200 MB: CUMPLE EL LIMITE
+
+Desglose por directorio (MB):
+  /usr     55.66
+  /etc     0.24
+  /var     0.26
+  /home    0.00
+
+10 subdirectorios más grandes de /usr (kB):
+  56996	/usr
+  32577	/usr/lib
+  11020	/usr/share
+  9792	/usr/share/roomba-disco
+  9790	/usr/share/roomba-disco/audio
+  9635	/usr/lib/systemd
+  6953	/usr/bin
+  6205	/usr/sbin
+  1450	/usr/lib/firmware
+  1128	/usr/lib/firmware/cypress
+
+Partición /boot (aparte, no cuenta como rootfs): usado 47.99 MB de 129.84 MB
+
+--------------------------------------------------------------
+ 2. TIEMPO DE ARRANQUE
+--------------------------------------------------------------
+Estado de systemd: running
+Unidades fallidas: 0
+
+$ systemd-analyze time
+Startup finished in 1.290s (kernel) + 2.130s (userspace) = 3.421s 
+multi-user.target reached after 2.080s in userspace.
+
+$ systemd-analyze critical-chain servidor.service
+The time when unit became active or started is printed after the "@" character.
+The time the unit took to start is printed after the "+" character.
+
+servidor.service @1.901s
+`-logica.service @1.853s +41ms
+  `-basic.target @1.830s
+    `-sockets.target @1.830s
+      `-dropbear.socket @1.830s
+        `-sysinit.target @1.804s
+          `-systemd-timesyncd.service @1.689s +114ms
+            `-systemd-tmpfiles-setup.service @1.618s +48ms
+              `-local-fs.target @1.615s
+                `-var-volatile.mount @1.596s +15ms
+                  `-local-fs-pre.target @838ms
+                    `-systemd-tmpfiles-setup-dev.service @804ms +33ms
+                      `-systemd-tmpfiles-setup-dev-early.service @598ms +117ms
+                        `-kmod-static-nodes.service @514ms +67ms
+                          `-systemd-journald.socket @487ms
+                            `--.mount @457ms
+                              `--.slice @457ms
+
+$ systemd-analyze blame (10 más lentas)
+584ms dev-mmcblk0p2.device
+356ms systemd-networkd.service
+317ms systemd-udev-trigger.service
+234ms dbus.service
+176ms systemd-fsck-root.service
+163ms systemd-journald.service
+146ms systemd-logind.service
+117ms systemd-tmpfiles-setup-dev-early.service
+114ms systemd-timesyncd.service
+114ms systemd-resolved.service
+
+Inicio de userspace (desde kernel):     1.290 s
+Fin de arranque de systemd:             3.421 s
+logica.service activo a los: 3.184 s desde el inicio del kernel
+servidor.service activo a los: 3.192 s desde el inicio del kernel
+
+Kernel -> servidor.service operativo: 3.192 s. Referencia <= 15 s: CUMPLE
+NOTA: no incluye el tiempo de firmware/bootloader de la rasp antes del kernel
+
+--------------------------------------------------------------
+ 3. RAM Y CPU EN OPERACIÓN (30 s, cada 2 s)
+--------------------------------------------------------------
+Procesos objetivo: logica servidor mpg123
+
+    t(s)    CPU(%)    RAM usada(MB)   Temp(C)
+       2       1.2            97.39      46.7
+       4       1.3            97.37      45.2
+       6       0.7            97.37      45.2
+       8       1.6            97.50      45.7
+      10       1.3            97.49      46.2
+      12       1.2            97.49      45.2
+      14       1.7            97.36      45.7
+      16       1.6            97.36      46.2
+      18       1.7            97.36      46.2
+      20       1.8            98.10      46.2
+      22       1.6            97.98      46.2
+      24       1.3            97.96      46.7
+      26       1.7            98.21      46.2
+      28       2.1            98.10      46.2
+      30       1.5            97.83      45.7
+
+CPU del sistema: promedio 1.4 %, máximo 2.1 %
+RAM usada (Total - MemAvailable): promedio 97.66 MB, máximo 98.21 MB, de 1845.29 MB totales
+
+Por proceso (CPU como % de UN núcleo; RSS/PSS en MB):
+  proceso       PID    CPU(%)       RSS  RSS pico       PSS
+  logica        239       4.4      2.37      2.37      1.15
+  servidor      240       0.0      1.75      1.75      0.47
+  mpg123        250       1.1      3.12      3.12      1.78
+
+~~~~~ Fin de las métricas calculadas ~~~~~.
