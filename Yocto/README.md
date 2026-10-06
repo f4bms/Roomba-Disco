@@ -4,34 +4,44 @@ Infraestructura de Linux embebido para la Raspberry Pi 4: capa `meta-robot/` (re
 propias) y la configuración de build en `local.conf`. Basado en **Poky (Scarthgap /
 release 5.0)**.
 
-El paso a paso de instalación, generación de la imagen y flasheo en la Pi está en el
-[`README.md`](../README.md) de la raíz del repo (secciones 2 y 9). Este archivo cubre
-solo los flujos de trabajo que no están ahí: conectar la Pi a WiFi, generar el SDK desde
-cero, e iterar con `devtool` sobre la Pi corriendo sin reflashear.
+El repositorio tiene dos carpetas de configuración: `Yocto/` (esta, con el `local.conf` de
+desarrollo) y `Yocto_min/` (la misma capa en versión reducida, con el `local.conf` mínimo;
+de ahí se genera la imagen entregada). Ver la sección 2 del [`README.md`](../README.md) de
+la raíz.
+
+El paso a paso de instalación, generación de la imagen y flasheo en la rasp está en
+[`GENERAR_IMAGEN.md`](../GENERAR_IMAGEN.md), y el [`README.md`](../README.md) de la raíz lo
+resume (secciones 2 y 9). Este archivo cubre los flujos de trabajo que no están ahí:
+conectar la rasp a WiFi (también resumido en el paso 9 de la guía), generar el SDK desde
+cero e iterar con `devtool` sobre la rasp corriendo sin reflashear.
+
+Las rutas de los comandos (`~/Taller4/...`) son de ejemplo y hay que ajustarlas al usuario
+y a la carpeta de trabajo; en `GENERAR_IMAGEN.md` la carpeta de trabajo es `~/trabajo` y el
+directorio de build es `~/trabajo/poky/rpi4`.
 
 La biblioteca de hardware (`roombateca`) no vive acá, sino en `../Biblioteca/` — ver la
 sección 3 del README de la raíz para el detalle de la receta que la referencia.
 
-## Conectar la Pi a WiFi
+## Conectar la rasp a WiFi
 
 La imagen trae el driver y firmware del WiFi integrado, `wpa_supplicant` corriendo sobre
 `wlan0` desde el arranque y DHCP por `systemd-networkd` (receta
 `meta-robot/recipes-connectivity/wifi-config`). No trae ninguna red guardada: la primera
-vez hay que entrar por cable (Ethernet) y agregarla desde la Pi:
+vez hay que entrar por cable (Ethernet) y agregarla desde la rasp:
 
 ```bash
-# desde: ~/Taller4/Roomba-Disco (en el host; los comandos siguientes se escriben DENTRO de la sesión SSH de la Pi)
+# desde: ~/Taller4/Roomba-Disco (en el host; los comandos siguientes se escriben DENTRO de la sesión SSH de la rasp)
 ssh root@<ip-por-ethernet>
 wpa_passphrase "NOMBRE_RED" "contraseña" >> /etc/wpa_supplicant/wpa_supplicant-wlan0.conf
 systemctl restart wpa_supplicant@wlan0
-ip -br addr show wlan0                 # debería mostrar la IP que dio el router
+ip addr show wlan0                     # debería mostrar la IP que dio el router
 ```
 
 La red queda guardada en la SD, así que en los siguientes arranques se conecta sola y ya
 se puede desconectar el cable. Si ambos están conectados, se prefiere la ruta por
 Ethernet. Para cambiar de red, editar `/etc/wpa_supplicant/wpa_supplicant-wlan0.conf`
 (borrar el bloque `network={...}` viejo) y repetir los dos últimos comandos. Para ver el
-estado: `wpa_cli -i wlan0 status` e `iw dev wlan0 link`.
+estado: `wpa_cli -i wlan0 status` (la imagen no incluye `iw`).
 
 ## Generar el SDK standalone (para cross-compilar sin la imagen completa)
 
@@ -44,7 +54,8 @@ bitbake core-image-minimal -c populate_sdk
 
 Genera un instalador en `tmp/deploy/sdk/poky-glibc-x86_64-...-toolchain-*.sh` (unos
 250 MB). Al correrlo (`./poky-glibc-...-toolchain-5.0.20.sh -d /ruta/destino`) deja un
-`environment-setup-cortexa72-poky-linux` para `source`ar:
+`environment-setup-cortexa72-poky-linux` para `source`ar. Si se omite `-d`, el instalador usa la
+ruta por defecto `/opt/poky/5.0.20/`, que es la que usa el README de la raíz (secciones 4 y 9):
 
 ```bash
 # desde: la carpeta del programa que se quiere compilar (en el host)
@@ -59,12 +70,12 @@ SDK, hay que regenerarlo (repetir este paso) para que el sysroot del SDK quede a
 
 ## Probar cambios en el hardware real sin reflashear la SD (`devtool`)
 
-Para iterar una receta (por ejemplo `libroombateca`) y probarla en la Pi corriendo, sin
+Para iterar una receta (por ejemplo `libroombateca`) y probarla en la rasp corriendo, sin
 rebuildear `core-image-minimal` ni tocar la SD:
 
 ```bash
 # desde: ~/Taller4/poky-scarthgap-5.0.15/rpi4  (todos los comandos de este bloque)
-# 1. Traer la receta a un workspace editable (crea build/workspace/, no toca la capa real)
+# 1. Traer la receta a un workspace editable (crea `workspace/` dentro del directorio de build, es decir `rpi4/workspace/`; no toca la capa real)
 devtool modify libroombateca
 
 # 2. Editar el código — devtool enlaza los archivos del workspace con symlinks hacia
@@ -74,24 +85,33 @@ devtool modify libroombateca
 # 3. Compilar solo esa receta
 devtool build libroombateca
 
-# 4. Desplegar el resultado directo a la Pi por SSH (usa rsync, no reflashea nada)
-devtool deploy-target libroombateca root@<IP-de-la-Pi>
+# 4. Desplegar el resultado directo a la rasp por SSH (no reflashea nada)
+devtool deploy-target libroombateca root@<IP_RASPBERRY>
 
-# 5. Probar en la Pi (por SSH, corriendo algo que la enlace) y repetir 2-4 las veces
+# 5. Probar en la rasp (por SSH, corriendo algo que la enlace) y repetir 2-4 las veces
 #    que haga falta
 
 # 6. Cuando el cambio esté listo, volcarlo de vuelta a la capa real del repo
 #    (esto sincroniza los archivos editados a Biblioteca/ vía FILESEXTRAPATHS)
-devtool finish libroombateca /ruta/al/repo/Roomba-Disco/Yocto/meta-robot
+devtool finish libroombateca /ruta/al/repo/Roomba-Disco/Yocto_min/meta-robot
 
-# Si en cambio NO querés quedarte con el cambio, en vez de "finish":
+# Si en cambio no se quiere conservar el cambio, en vez de "finish":
 devtool reset libroombateca
 ```
 
-`deploy-target` necesita SSH sin pedir contraseña hacia la Pi (llave copiada con
-`ssh-copy-id`) y que el usuario remoto (`root` en esta imagen de desarrollo) tenga permiso
+`deploy-target` necesita SSH sin pedir contraseña hacia la rasp (llave copiada con
+`ssh-copy-id`, ver el paso 9 de [`GENERAR_IMAGEN.md`](../GENERAR_IMAGEN.md); la imagen usa
+dropbear y la llave se pierde cada vez que se reflashea la SD) y que el usuario remoto (`root` en esta imagen de desarrollo) tenga permiso
 de escritura en las rutas que instala la receta. Para revertir lo desplegado sin esperar
-al próximo build de imagen: `devtool undeploy-target libroombateca root@<IP>`.
+al próximo build de imagen: `devtool undeploy-target libroombateca root@<IP_RASPBERRY>`.
+
+La capa de destino de `devtool finish` tiene que ser la que está registrada en el build; con
+el procedimiento de `GENERAR_IMAGEN.md` es `Yocto_min/meta-robot`. Si el cambio es en una
+receta de la capa (y no solo en el código de `Biblioteca/`), hay que copiarlo también a
+`Yocto/meta-robot`, porque las dos carpetas comparten recetas.
+
+La imagen entregada no incluye `rsync`. Si `deploy-target` lo pide en esta versión de Poky,
+se agrega `rsync` temporalmente a `IMAGE_INSTALL`, se reconstruye y se reflashea.
 
 ## Regenerar la imagen después de cambiar la configuración
 
@@ -124,12 +144,12 @@ Comandos útiles:
 # Ejecutar desde: ~/Taller4/poky-scarthgap-5.0.15/rpi4
 bitbake -e core-image-minimal | grep -E '^IMAGE_INSTALL='     # ver qué quedó configurado
 bitbake -c cleansstate logica && bitbake logica                # forzar que una receta se recompile desde cero
-grep -E 'systemd-analyze|metricas|procps|alsa-utils|tailscale' tmp/deploy/images/raspberrypi4-64/*.manifest   # qué paquetes entraron
+grep -E 'systemd-analyze|metricas|procps|alsa-utils|tailscale' tmp/deploy/images/raspberrypi4-64/*.manifest   # qué paquetes entraron (procps, alsa-utils y tailscale no deben aparecer)
 ```
 
-No se debe borrar `tmp/` ni `sstate-cache/` salvo que sea imprescindible: se pierde toda la caché. Cada cambio hecho al `local.conf` del build también debe copiarse a [`Yocto/local.conf`](local.conf) para que el del repo siga igual al que se usa.
+No se debe borrar `tmp/` ni `sstate-cache/` salvo que sea imprescindible: se pierde toda la caché. Cada cambio hecho al `local.conf` del build también debe copiarse al del repo que se usa para generar la imagen, [`Yocto_min/local.conf`](../Yocto_min/local.conf), para que el del repo siga igual al que se usa.
 
-## Medir el tamaño del rootfs sin flashear la Pi
+## Medir el tamaño del rootfs sin flashear la rasp
 
 El tamaño real del rootfs se puede conocer en el host, antes de grabar la microSD.
 
@@ -147,7 +167,7 @@ dumpe2fs -h core-image-minimal-raspberrypi4-64.rootfs.ext3 2>/dev/null | awk -F:
 END {printf "Usado: %.1f MB\n", (c-f)*b/1024/1024}'
 ```
 
-<!-- TODO (nombre del archivo rootfs): el nombre exacto y la extensión (.ext3 o .ext4) dependen del build. Confirmarlo con el `ls` de arriba y ajustar el comando. -->
+El nombre exacto y la extensión (`.ext3` o `.ext4`) dependen del build; confirmarlo con el `ls` anterior. Si no aparece ningún `.rootfs.ext3` ni `.ext4`, el tamaño se mide directamente en la rasp con `medir_metricas.sh` (sección 7 del README de la raíz).
 
 Para ver qué directorios ocupan más espacio (montando la imagen en solo lectura):
 
@@ -164,7 +184,7 @@ Para saber qué **paquete** pesa cuánto se activa temporalmente `buildhistory`:
 
 ```bash
 # Ejecutar desde: ~/Taller4/poky-scarthgap-5.0.15/rpi4
-echo 'INHERIT += "buildhistory"' >> conf/local.conf      # solo para medir; quitarla después y NO copiarla a Yocto/local.conf
+echo 'INHERIT += "buildhistory"' >> conf/local.conf      # solo para medir; quitarla después y NO copiarla a ningún local.conf del repo
 bitbake core-image-minimal
 find buildhistory -name installed-package-sizes.txt
 ```
@@ -174,4 +194,4 @@ find buildhistory -name installed-package-sizes.txt
 sort -rn <ruta-que-imprimio-find> | head -25      # los 25 paquetes más grandes, en KiB
 ```
 
-Esa lista alimenta la columna "Tamaño instalado" de la tabla de paquetes del README raíz (sección 2).
+Esa lista sirve para saber qué paquetes pesan más y decidir si alguno se puede quitar. Si se quiere documentar el tamaño de cada paquete, se agrega como una columna a la tabla de paquetes del README de la raíz (sección 2).
