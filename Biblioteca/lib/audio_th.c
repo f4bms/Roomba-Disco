@@ -94,7 +94,7 @@ static int iniciar_proceso_mpg123(pid_t *pid_out, int *stdin_fd_out, int *stdout
             close(devnull);
         }
         //en caso de que falle captura el error
-        execlp(MPG123_BIN, MPG123_BIN, "-R", (char *)NULL);
+        execlp(MPG123_BIN, MPG123_BIN, "-o", "alsa", "-R", (char *)NULL);
         _exit(127);
     }
     //Acomoda de nuevo los punteros 
@@ -303,7 +303,7 @@ static void *reproducir_notificacion(void *arg_ptr) {
             dup2(devnull, STDERR_FILENO);
             close(devnull);
         }
-        execlp(MPG123_BIN, MPG123_BIN, "-q", datos->path, (char *)NULL);
+        execlp(MPG123_BIN, MPG123_BIN, "-o", "alsa", "-q", datos->path, (char *)NULL);
         _exit(127);
     } else if (pid > 0) {
         waitpid(pid, NULL, 0);
@@ -351,7 +351,7 @@ int play_notification_wait(const char *path) {
             dup2(devnull, STDERR_FILENO);
             close(devnull);
         }
-        execlp(MPG123_BIN, MPG123_BIN, "-q", path, (char *)NULL);
+        execlp(MPG123_BIN, MPG123_BIN, "-o", "alsa", "-q", path, (char *)NULL);
         _exit(127);
     }
     if (waitpid(pid, NULL, 0) < 0) return -errno;
