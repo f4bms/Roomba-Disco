@@ -101,6 +101,8 @@ la compensación se hace en la biblioteca de control, no en la asignación de pi
 succión el PC817 trabaja como seguidor de emisor hacia la compuerta del MOSFET, así que la
 señal llega sin invertir.
 
+![Circuito de la etapa de succión](diagramas/succion-mosfet.png)
+
 La succión no tiene canal de PWM por hardware libre (PWM0 lo usa el L298N y PWM1 el jack
 de audio), así que `libroombateca` genera el PWM por software en un hilo. El motor es de
 7,4 V y el riel de batería llega a 12,6 V: la potencia 100 de `succion_set()` equivale a un
