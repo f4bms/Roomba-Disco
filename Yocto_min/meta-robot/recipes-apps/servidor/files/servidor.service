@@ -4,7 +4,8 @@ After=network.target logica.service
 Wants=logica.service
 
 [Service]
-ExecStart=/usr/bin/servidor 8080 /usr/share/roomba-disco/www /run/roomba-logica.sock
+StateDirectory=roomba-disco
+ExecStart=/usr/bin/servidor 8080 /usr/share/roomba-disco/www /run/roomba-logica.sock /var/lib/roomba-disco/usuarios.conf
 Restart=on-failure
 
 [Install]
