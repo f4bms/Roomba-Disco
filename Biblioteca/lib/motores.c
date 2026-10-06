@@ -15,7 +15,7 @@
  * la tensión efectiva en los TT con el pack lleno; el mínimo salta la zona
  * muerta. Por definir: medir en bornes del motor y ajustar ambos. */
 #define MOTOR_DUTY_MIN_PCT 25u
-#define MOTOR_DUTY_MAX_PCT 70u
+#define MOTOR_DUTY_MAX_PCT 90u
 
 /* Rueda libre entre un sentido y el opuesto, para no invertir en seco. */
 #define MOTOR_PAUSA_INVERSION_MS 30
