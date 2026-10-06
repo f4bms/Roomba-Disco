@@ -114,6 +114,8 @@ duty del 55 %, con rampa de arranque de 1 s.
 
 **Aviso**: En los ejemplos de código habrán direcciones que tienen dirección parecida a `home/irmunoz/Taller4/`, ajustar a su usuario o directorio donde van a trabajarlo.
 
+La guía completa para generar y flashear la imagen en una PC nueva, con las versiones de las capas fijadas, está en [`GENERAR_IMAGEN.md`](GENERAR_IMAGEN.md).
+
 ### Requisitos del Host (Anfitrión)
 * **SO Recomendado:** Ubuntu 22.04 LTS o 24.04 LTS.
 * **Espacio Libre:** Mínimo 90 GB en disco duro.
@@ -122,13 +124,13 @@ duty del 55 %, con rampa de arranque de 1 s.
 ### Paso 1: Clonar el Entorno Base y la Capa BSP
 ```bash
 # Clonar Poky (Distribución base de Yocto - Versión Scarthgap)
-git clone --branch yocto-5.0.15 https://yoctoproject.org poky-scarthgap-5.0.15
+git clone --branch yocto-5.0.15 https://git.yoctoproject.org/poky poky-scarthgap-5.0.15
 cd poky-scarthgap-5.0.15
 
 # Clonar el BSP Oficial de Raspberry Pi
-git clone --branch scarthgap https://github.com/raspberrypi/linux
+git clone --branch scarthgap https://git.yoctoproject.org/meta-raspberrypi
 ```
-Si hubo algún problema a la hora de clonar el BSP Oficial, se puede descargar y continuar luego localmente guardando en un directorio creado para descargas
+Si hubo algún problema a la hora de descargar el kernel de Raspberry Pi, se puede descargar y continuar luego localmente guardando en un directorio creado para descargas
 
 ```bash
 mkdir downloads
