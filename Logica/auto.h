@@ -22,9 +22,10 @@ extern "C" {
 #define AUTO_BUSCAR_ESQUINA 1
 
 // Definimos las velocidades Entre 0-1000 de roombateca_set_motion
-#define AUTO_VEL_AVANCE 300
-#define AUTO_VEL_MOVER 250
-#define AUTO_VEL_GIRO   250
+#define AUTO_VEL_AVANCE 1000
+#define AUTO_VEL_MOVER 1000
+#define AUTO_VEL_GIRO   1000
+#define AUTO_VEL_RETROCEDER 1000
 
 // Definimos distancias:
 // El paso es del ancho de boquilla, según el modelo3D 12cm
@@ -42,11 +43,23 @@ extern "C" {
 #define AUTO_TIMEOUT_GIRO_NS   4000000000ULL  // 4s
 #define AUTO_TIMEOUT_MOVER_NS  3000000000ULL  // 3s
 
+// Atasco: con los motores andando, si la odometria (encoders) no avanza en una
+// ventana se toma como obstaculo que el ultrasonico no vio. La gracia evita
+// confundir la aceleracion al arrancar la fase con un atasco.
+#define AUTO_ATASCO_GRACIA_NS   500000000ULL  // 0.5s
+#define AUTO_ATASCO_VENTANA_NS  400000000ULL  // 0.4s
+#define AUTO_ATASCO_MIN_MM      10.0          // avance minimo por ventana
+#define AUTO_ATASCO_MIN_RAD     0.05          // ~3 grados por ventana en giro
+#define AUTO_ATASCOS_MAX        3             // seguidos sin completar maniobra = fin
+#define AUTO_RETROCESO_MM       50.0          // cuanto se aleja tras un atasco
+#define AUTO_TIMEOUT_RETROCEDER_NS 800000000ULL // 0.8s
+
 typedef enum {
     AUTO_AVANZAR = 0,   // fila: recto hasta obstaculo
     AUTO_PARAR,         // pausa corta entre maniobras
     AUTO_GIRAR,         // 90 grados dependiendo del 'lado' 
     AUTO_MOVER,         // avanzar AUTO_PASO_MM hacia la siguiente fila
+    AUTO_RETROCEDER,    // tras un atasco, alejarse AUTO_RETROCESO_MM
     AUTO_FIN            // termina recorrido se detienen los motores
 } auto_fase_t;
 
@@ -57,7 +70,7 @@ typedef enum {
 } auto_etapa_t;
 
 typedef struct {
-    const char *direccion;   // "FWD", "TURN_L", "TURN_R" o "STOP" 
+    const char *direccion;   // "FWD", "BACK", "TURN_L", "TURN_R" o "STOP" 
     int velocidad;           // 0-1000
     bool aspirar;            // true durante el barrido (esta parte todavía no está atada)
 } auto_orden_t;
@@ -75,6 +88,12 @@ typedef struct {
     double theta_anterior_rad;
     double giro_acumulado_rad;
     double giro_objetivo_rad;        // tiene signo para saber hacia donde es el giro
+    bool reanudar_giro;              // al volver a GIRAR tras un atasco, conservar lo girado
+    int atascos;                     // atascos seguidos sin completar una maniobra
+    uint64_t atasco_ref_ns;          // punto de referencia de la ventana de atasco
+    double atasco_ref_x_mm;
+    double atasco_ref_y_mm;
+    double atasco_ref_giro_rad;
 } auto_t;
 
 void auto_init(auto_t *auto_estado);

@@ -175,21 +175,52 @@ static void test_reinicio_a_mitad(void) {
     assert(!auto_fin(&a));
 }
 
-static void test_timeout_giro(void) {
+/* Giro con la odometria congelada (rueda trabada): retrocede y reintenta
+ * AUTO_ATASCOS_MAX veces; si nunca logra girar, termina. */
+static void test_atasco_giro(void) {
     auto_t a;
     odometria_pose_t pose = {0, 0, 0};
     uint64_t t = 1000ULL * MS;
-    auto_orden_t o = auto_paso(&a, &pose, 0, false, t);
-    int i;
+    auto_orden_t o;
+    int i, retrocesos = 0;
 
     auto_init(&a);
     auto_paso(&a, &pose, 150.0f, true, t);
     auto_paso(&a, &pose, 10.0f, true, t += 100 * MS);
     o = auto_paso(&a, &pose, 10.0f, true, t += 400 * MS);
-    for (i = 0; i < 80 && es(o, "TURN_R"); ++i)                 /* odometria congelada */
+    assert(es(o, "TURN_R"));
+    for (i = 0; i < 200 && !auto_fin(&a); ++i) {
         o = auto_paso(&a, &pose, 150.0f, true, t += 100 * MS);
+        if (es(o, "BACK") && a.inicio_fase_ns == t) ++retrocesos;
+    }
     assert(auto_fin(&a));
     assert(es(o, "STOP"));
+    assert(retrocesos == AUTO_ATASCOS_MAX);
+}
+
+/* Avanzando sin nada a la vista del ultrasonico pero con la pose quieta: choco
+ * con algo que el sensor no ve. Retrocede y lo toma como fin de fila. */
+static void test_atasco_avanzando(void) {
+    auto_t a;
+    odometria_pose_t pose = {0, 0, 0};
+    uint64_t t = 1000ULL * MS;
+    auto_orden_t o;
+    int i;
+
+    auto_init(&a);
+    o = auto_paso(&a, &pose, 150.0f, true, t);
+    for (i = 0; i < 20 && es(o, "FWD"); ++i)
+        o = auto_paso(&a, &pose, 150.0f, true, t += 100 * MS);
+    assert(es(o, "BACK"));
+    assert(i <= 10);                                             /* gracia + una ventana */
+    assert(a.etapa == AUTO_ETAPA_ESQUINA_2);                     /* cuenta como la pared 1 */
+    for (i = 0; i < 10 && es(o, "BACK"); ++i) {
+        pose.x_mm -= 10.0;
+        o = auto_paso(&a, &pose, 150.0f, true, t += 100 * MS);
+    }
+    assert(es(o, "STOP"));
+    o = auto_paso(&a, &pose, 150.0f, true, t += 400 * MS);
+    assert(es(o, "TURN_R"));
 }
 //
 
@@ -201,7 +232,8 @@ int main(void) {
 
     test_secuencia_basica();
     test_reinicio_a_mitad();
-    test_timeout_giro();
+    test_atasco_giro();
+    test_atasco_avanzando();
 	//pasos son los ticks de 100ms que tardó la simulación
 	//Se espera resultado: pasos=5697 (570 s)  fin=1  choque=0  cobertura=85.2%
     printf("Habitacion 3.0 x 2.0 m vacia, arranque en el centro:\n");
