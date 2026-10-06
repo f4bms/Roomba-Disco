@@ -1,0 +1,12 @@
+[Unit]
+Description=Logica Roomba-Disco
+After=local-fs.target
+
+[Service]
+StateDirectory=roomba-disco
+ExecStartPre=/bin/cp -n /usr/share/roomba-disco/estado.json /var/lib/roomba-disco/estado.json
+ExecStart=/usr/bin/logica /var/lib/roomba-disco/estado.json /run/roomba-logica.sock
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
