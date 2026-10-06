@@ -40,11 +40,7 @@ El sistema está estructurado bajo un modelo en 4 niveles:
 
 ### 📟 Arquitectura de Hardware
 
-![Diagrama de arquitectura de hardware](diagramas/arquitectura-hardware.svg)
-
-> Fuente del diagrama: [`diagramas/arquitectura-hardware.d2`](diagramas/arquitectura-hardware.d2)
-> ([D2](https://d2lang.com/)). Regenerar con:
-> `d2 diagramas/arquitectura-hardware.d2 diagramas/arquitectura-hardware.svg`.
+![Diagrama de arquitectura de hardware](diagramas/arquitectura-hardware.png)
 
 El sistema se divide en cuatro dominios:
 
@@ -67,6 +63,9 @@ El sistema se divide en cuatro dominios:
   uno con un disco ranurado que leen los encoders sin contacto eléctrico.
 
 #### Mapa de pines GPIO (Raspberry Pi 4)
+
+![Diagrama de conexión del header GPIO](diagramas/conexion-gpio.png)
+
 El PWM de los motores usa `GPIO12`/`GPIO13` (los dos canales de PWM0, función ALT0).
 `GPIO18`/`GPIO19` son los mismos dos canales en pines alternativos, así que quedan sin
 conectar. Las señales se agrupan por mazo: motores en los pines 29–37 y sensores y LEDs
