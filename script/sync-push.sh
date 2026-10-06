@@ -34,11 +34,11 @@ echo "Actualizando referencias remotas..."
 git fetch origin
 
 echo "Fusionando origin/$RAMA_BASE en $RAMA_ACTUAL..."
-git merge "origin/$RAMA_BASE"
+git merge --no-edit "origin/$RAMA_BASE"
 
 echo "Fusionando $RAMA_ACTUAL en $RAMA_BASE..."
 git checkout "$RAMA_BASE"
-git merge "$RAMA_ACTUAL"
+git merge --no-edit "$RAMA_ACTUAL"
 git push -u origin "$RAMA_BASE"
 git checkout "$RAMA_ACTUAL"
 
