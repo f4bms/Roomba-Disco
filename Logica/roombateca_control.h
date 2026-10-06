@@ -13,6 +13,8 @@
  int roombateca_control_init(void);
  void roombateca_control_cleanup(void);
  int roombateca_set_motion(const char *direction, int speed);
+/* Llamar en cada tick de control: frena la rueda que se adelanta. */
+void roombateca_sync_wheels(const encoder_lectura_t readings[ENCODER_CANTIDAD]);
  void roombateca_set_mode_leds(const char *mode);
 
 int roombateca_read_sensors(float distances[SENSOR_CANTIDAD], bool valid[SENSOR_CANTIDAD]);

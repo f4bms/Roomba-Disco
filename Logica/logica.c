@@ -266,6 +266,8 @@ static void control_tick(cJSON *state, odometria_t *odometria, mapa_t *mapa,
             }
         }
 
+    roombateca_sync_wheels(encoder_readings);
+
     if (odometria_actualizar(odometria,
                              &encoder_readings[ENCODER_IZQUIERDO],
                              &encoder_readings[ENCODER_DERECHO]) != 0) return;

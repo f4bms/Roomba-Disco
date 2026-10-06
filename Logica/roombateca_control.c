@@ -6,7 +6,36 @@
 #include "sensores.h"
 #include "succion.h"
 
+#include <stdlib.h>
 #include <string.h>
+
+/* Sincronización de ruedas: en cada tick se compara cuántos pulsos lleva
+ * cada rueda desde que empezó el movimiento y se frena la adelantada (a
+ * velocidad 100 no hay margen para acelerar la otra). La parte integral se
+ * conserva entre movimientos del mismo tipo y funciona como trim aprendido.
+ * Por definir: afinar KP/KI con el robot en el piso. */
+#define SYNC_KP          4.0   /* unidades de velocidad por pulso de diferencia */
+#define SYNC_KI          0.5   /* por pulso de diferencia y por tick */
+#define SYNC_AJUSTE_MAX  40.0  /* corrección máxima, en unidades de velocidad */
+
+/* Rampa de arranque: la velocidad base sube este tanto por tick (0 a 100 en
+ * ~0,5 s) para no patinar ni pedirle un pico de corriente al pack. */
+#define RAMPA_PASO       20
+
+enum { MOV_FWD, MOV_BACK, MOV_TURN_L, MOV_TURN_R, MOV_CANTIDAD };
+
+static struct {
+	int activo;
+	int tipo;
+	int velocidad;
+	int base;          /* velocidad actual de la rampa, hasta llegar a velocidad */
+	int signo_izq;
+	int signo_der;
+	int64_t inicio_izq;
+	int64_t inicio_der;
+} mov;
+
+static double ajuste_aprendido[MOV_CANTIDAD];
 
 static int clamp_motor_speed(int speed) {
 	if (speed < -100) return -100;
@@ -142,34 +171,100 @@ int roombateca_read_encoders(encoder_lectura_t readings[ENCODER_CANTIDAD]) {
 	return encoders_leer_todos(readings);
 }
 
-int roombateca_set_motion(const char *direction, int speed) {
-	int left_speed;
-	int right_speed;
-	int motor_speed = clamp_motor_speed(scaled_speed(speed));
-
-	if (strcmp(direction, "FWD") == 0) {
-		left_speed = motor_speed;
-		right_speed = motor_speed;
-	} else if (strcmp(direction, "BACK") == 0) {
-		left_speed = -motor_speed;
-		right_speed = -motor_speed;
-	} else if (strcmp(direction, "TURN_L") == 0) {
-		left_speed = -motor_speed;
-		right_speed = motor_speed;
-	} else if (strcmp(direction, "TURN_R") == 0) {
-		left_speed = motor_speed;
-		right_speed = -motor_speed;
-	} else if (strcmp(direction, "STOP") == 0) {
-		left_speed = 0;
-		right_speed = 0;
-	} else {
-		return -1;
-	}
-
+static int set_wheels(int left_speed, int right_speed) {
 	if (motor_izquierdo_set(left_speed) != 0) return -1;
 	if (motor_derecho_set(right_speed) != 0) {
 		motor_izquierdo_set(0);
 		return -1;
 	}
 	return 0;
+}
+
+/* error > 0: la izquierda va adelantada. Se le resta la corrección a la
+ * rueda adelantada sin bajarla de 1 (por debajo quedaría en rueda libre). */
+static int apply_synced_speeds(double error) {
+	double ajuste = SYNC_KP * error + ajuste_aprendido[mov.tipo];
+	int left = mov.base;
+	int right = mov.base;
+	int reduccion;
+
+	if (ajuste > SYNC_AJUSTE_MAX) ajuste = SYNC_AJUSTE_MAX;
+	if (ajuste < -SYNC_AJUSTE_MAX) ajuste = -SYNC_AJUSTE_MAX;
+	reduccion = (int)(ajuste >= 0.0 ? ajuste + 0.5 : -ajuste + 0.5);
+	if (ajuste > 0.0) {
+		left = mov.base - reduccion < 1 ? 1 : mov.base - reduccion;
+	} else {
+		right = mov.base - reduccion < 1 ? 1 : mov.base - reduccion;
+	}
+	return set_wheels(mov.signo_izq * left, mov.signo_der * right);
+}
+
+int roombateca_set_motion(const char *direction, int speed) {
+	encoder_lectura_t lecturas[ENCODER_CANTIDAD];
+	int motor_speed = clamp_motor_speed(scaled_speed(speed));
+	int tipo;
+	int signo_izq;
+	int signo_der;
+
+	if (strcmp(direction, "FWD") == 0) {
+		tipo = MOV_FWD;    signo_izq = 1;  signo_der = 1;
+	} else if (strcmp(direction, "BACK") == 0) {
+		tipo = MOV_BACK;   signo_izq = -1; signo_der = -1;
+	} else if (strcmp(direction, "TURN_L") == 0) {
+		tipo = MOV_TURN_L; signo_izq = -1; signo_der = 1;
+	} else if (strcmp(direction, "TURN_R") == 0) {
+		tipo = MOV_TURN_R; signo_izq = 1;  signo_der = -1;
+	} else if (strcmp(direction, "STOP") == 0) {
+		mov.activo = 0;
+		/* Freno dinámico: en rueda libre el robot sigue rodando por inercia
+		 * y se pasa en los giros. */
+		return motores_frenar();
+	} else {
+		return -1;
+	}
+
+	if (motor_speed == 0) {
+		mov.activo = 0;
+		return motores_frenar();
+	}
+	/* El modo AUTO repite la misma orden en cada tick: si no cambió, se
+	 * conserva la corrección en curso en vez de volver a la velocidad base. */
+	if (mov.activo && mov.tipo == tipo && mov.velocidad == motor_speed) return 0;
+
+	/* Un cambio de velocidad en el mismo sentido sigue la rampa desde donde
+	 * iba; un arranque o cambio de sentido la empieza de cero. Bajar es
+	 * inmediato. */
+	if (!(mov.activo && mov.tipo == tipo)) mov.base = 0;
+	if (mov.base == 0) mov.base = motor_speed < RAMPA_PASO ? motor_speed : RAMPA_PASO;
+	if (mov.base > motor_speed) mov.base = motor_speed;
+	mov.tipo = tipo;
+	mov.velocidad = motor_speed;
+	mov.signo_izq = signo_izq;
+	mov.signo_der = signo_der;
+	mov.activo = encoders_leer_todos(lecturas) == 0;
+	if (!mov.activo) return set_wheels(signo_izq * motor_speed, signo_der * motor_speed);
+	mov.inicio_izq = lecturas[ENCODER_IZQUIERDO].pulsos;
+	mov.inicio_der = lecturas[ENCODER_DERECHO].pulsos;
+	return apply_synced_speeds(0.0);
+}
+
+void roombateca_sync_wheels(const encoder_lectura_t readings[ENCODER_CANTIDAD]) {
+	double error;
+
+	if (!mov.activo || readings == NULL) return;
+	if (mov.base < mov.velocidad) {
+		mov.base = mov.base + RAMPA_PASO < mov.velocidad ? mov.base + RAMPA_PASO : mov.velocidad;
+	}
+	error =(double)(llabs(readings[ENCODER_IZQUIERDO].pulsos - mov.inicio_izq)
+	                 - llabs(readings[ENCODER_DERECHO].pulsos - mov.inicio_der));
+	/* Solo se aprende con las dos ruedas girando: una rueda trabada no es
+	 * diferencia entre motores y dejaría el trim saturado. */
+	if (readings[ENCODER_IZQUIERDO].velocidad_mm_s != 0.0
+			&& readings[ENCODER_DERECHO].velocidad_mm_s != 0.0) {
+		double *ajuste = &ajuste_aprendido[mov.tipo];
+		*ajuste += SYNC_KI * error;
+		if (*ajuste > SYNC_AJUSTE_MAX) *ajuste = SYNC_AJUSTE_MAX;
+		if (*ajuste < -SYNC_AJUSTE_MAX) *ajuste = -SYNC_AJUSTE_MAX;
+	}
+	apply_synced_speeds(error);
 }
