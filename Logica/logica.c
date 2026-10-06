@@ -631,7 +631,7 @@ int main(int argc, char **argv) {
     control.state = state;
     last_heartbeat_ns = monotonic_now_ns();
     if (odometria_init(&control.odometria,
-                       (odometria_config_t){.distancia_ruedas_mm = 200.0}) != 0) {
+                       (odometria_config_t){.distancia_ruedas_mm = 220.0}) != 0) {
         fprintf(stderr, "no se pudo inicializar la odometria\n");
         cJSON_Delete(state);
         return EXIT_FAILURE;
