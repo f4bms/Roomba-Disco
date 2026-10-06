@@ -4,6 +4,10 @@ Pasos para armar desde cero, en una máquina que solo tiene el repo `Roomba-Disc
 imagen del proyecto: `core-image-minimal` para la Raspberry Pi 4
 (64 bits) con systemd, dropbear, WiFi, audio, PWM y las recetas de `meta-robot`.
 
+Para entender qué contiene la imagen (capas, paquetes y recetas) ver las secciones 2 y 3 del
+[`README.md`](README.md) de la raíz; para usar el sistema una vez grabado, la sección 10 de ese
+README y el final del paso 9 de esta guía.
+
 Referencia de versiones (las usadas para la imagen entregada, 6-oct-2026):
 
 | Componente          | Rama        | Commit    |
@@ -15,12 +19,12 @@ Referencia de versiones (las usadas para la imagen entregada, 6-oct-2026):
 
 Cosas a tener en cuenta:
 
-- La capa que se compila es **`Yocto_min/`**, no `Yocto/`. El README de `Yocto_min`
-  plantea borrar `Yocto/` y renombrar `Yocto_min` a `Yocto`; si eso ya pasó, cambiá la
-  ruta en los comandos.
+- El repositorio mantiene dos carpetas de configuración: `Yocto/` (de desarrollo, con la
+  receta de Tailscale) y `Yocto_min/` (la versión reducida, con el `local.conf` mínimo). La
+  imagen entregada se compila desde **`Yocto_min/`**, y es la que usa esta guía.
 - Las recetas de `meta-robot` toman el código de `Biblioteca/`, `Servidor/` y `Logica/`
   con rutas relativas (`${THISDIR}/../../../../...`). Por eso **la capa tiene que quedar
-  dentro del clon del repo**: no la copies a otra carpeta.
+  dentro del clon del repo**: no se debe copiar a otra carpeta.
 
 ---
 
@@ -29,7 +33,7 @@ Cosas a tener en cuenta:
 - **Disco:** unos 90 GB libres. Tan solo `downloads/` y `sstate-cache/` ocupan 16 GB.
 - **Tiempo:** el primer build tarda varias horas (compila el toolchain cruzado, el
   kernel y todo el userspace). Los siguientes reaprovechan el `sstate-cache`.
-- **RAM:** con 16 GB va bien usando 10 hilos. Con menos, bajá los hilos (ver paso 4).
+- **RAM:** con 16 GB va bien usando 10 hilos. Con menos, hay que bajar los hilos (ver paso 4).
 - **Locale `en_US.UTF-8`** generado (`locale -a | grep -i en_us`). BitBake no arranca
   sin él.
 
@@ -60,7 +64,7 @@ En **Ubuntu 24.04**, AppArmor bloquea los *user namespaces* que usa BitBake (err
 sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
 ```
 
-Con eso el cambio dura hasta el próximo reinicio. Para que sea permanente, agregá esa línea
+Con eso el cambio dura hasta el próximo reinicio. Para que sea permanente, se agrega esa línea
 a `/etc/sysctl.d/60-bitbake.conf`.
 
 ---
@@ -106,20 +110,20 @@ cd ~/trabajo/poky
 source oe-init-build-env rpi4        # crea rpi4/ y te deja parado adentro
 ```
 
-Cada vez que abras una terminal nueva para compilar, repetí este `source` (desde
+Cada vez que se abra una terminal nueva para compilar, hay que repetir este `source` (desde
 `~/trabajo/poky`). Si ya existe `rpi4/`, solo carga el entorno.
 
 ---
 
 ## 4. Configuración (`conf/local.conf`)
 
-Partí del `local.conf` que está versionado en el repo:
+Se parte del `local.conf` en el repo:
 
 ```bash
 cp ~/trabajo/Roomba-Disco/Yocto_min/local.conf conf/local.conf
 ```
 
-Revisá y ajustá estas líneas:
+Revisar y ajustar estas líneas dependiendo de la cantidad de paralelización que se requiera (Opcionales):
 
 ```conf
 # Hilos: la cantidad de núcleos menos 2 (en el repo quedó en 5)
@@ -128,7 +132,7 @@ PARALLEL_MAKE = "-j 10"
 ```
 
 Si el fetch de alguna receta falla con un error de `git://` (típico «exit code 128»),
-agregá estas dos líneas al final (no están en el `local.conf` del repo):
+agregar estas dos líneas al final (no están en el `local.conf` del repo):
 
 ```conf
 PREMIRRORS:prepend = "git://.*/.* https://yoctoproject.org \n"
@@ -159,7 +163,7 @@ bitbake-layers show-layers           # deben aparecer las 3 + meta, meta-poky, m
 
 ## 6. (Opcional) Reaprovechar las descargas y el caché de otra PC
 
-Para no descargar ni recompilar todo de nuevo, copiá estas dos carpetas de una PC donde ya
+Para no descargar ni recompilar todo de nuevo, se copian estas dos carpetas de una PC donde ya
 se compiló la imagen a la nueva **antes** del primer `bitbake`:
 
 | En la PC que ya compiló                 | En la PC nueva                      |
@@ -179,7 +183,7 @@ arriba: por eso conviene fijarlos.
 bitbake core-image-minimal
 ```
 
-Si querés validar el entorno con algo más corto antes de lanzar el build completo:
+Para validar el entorno con algo más corto antes de lanzar el build completo:
 
 ```bash
 bitbake libroombateca                # compila el toolchain + la biblioteca
@@ -199,13 +203,13 @@ Los nombres sin fecha son enlaces simbólicos a la última imagen compilada.
 
 ## 8. Flashear la microSD
 
-Identificá el dispositivo de la SD **con cuidado**: `dd` sobrescribe lo que le indiques.
+Identificar el dispositivo de la SD **con cuidado**: `dd` sobrescribe lo que se le indique.
 
 ```bash
-lsblk                                # buscá la SD por tamaño, p. ej. /dev/sdb o /dev/mmcblk0
+lsblk                                # buscar la SD por tamaño, p. ej. /dev/sdb o /dev/mmcblk0
 ```
 
-Desmontá sus particiones si se automontaron y escribí la imagen:
+Desmontar sus particiones si se automontaron y escribir la imagen:
 
 ```bash
 cd ~/trabajo/poky/rpi4/tmp/deploy/images/raspberrypi4-64
@@ -214,7 +218,7 @@ bzcat core-image-minimal-raspberrypi4-64.rootfs.wic.bz2 \
 sync
 ```
 
-Si tenés `bmaptool` instalado, este es más rápido (usa el `.wic.bmap` para escribir solo
+Si se tiene `bmaptool` instalado, este es más rápido (usa el `.wic.bmap` para escribir solo
 los bloques con datos):
 
 ```bash
@@ -227,17 +231,17 @@ Otra opción es Raspberry Pi Imager → «Use custom» → el `.wic.bz2`.
 
 ## 9. Primer arranque
 
-1. Insertá la SD en la Pi, conectá el cable de red al router y encendela.
-2. Buscá la IP que le asignó el DHCP (desde el router, o con un monitor y teclado:
+1. Insertar la SD en la rasp, conectar el cable de red al router y encenderla.
+2. Buscar la IP que le asignó el DHCP (desde el router, o con un monitor y teclado:
    `ip a`). El hostname es `raspberrypi4-64`. No hay avahi, así que
    `raspberrypi.local` no resuelve.
-3. Entrá: `ssh root@<ip>`. Root no tiene contraseña (`debug-tweaks`).
-4. Si ya te habías conectado a esa IP con una imagen anterior, primero borrá la llave
+3. Entrar con `ssh root@<ip>`. Root no tiene contraseña (`debug-tweaks`).
+4. Si ya se había conectado a esa IP con una imagen anterior, primero hay que borrar la llave
    vieja: `ssh-keygen -R <ip>`.
 
 ### WiFi
 
-La imagen no trae ninguna red guardada. Agregala la primera vez, conectado por cable:
+La imagen no trae ninguna red guardada. Se agrega la primera vez, conectado por cable:
 
 ```bash
 wpa_passphrase "NOMBRE_RED" "contraseña" >> /etc/wpa_supplicant/wpa_supplicant-wlan0.conf
@@ -269,10 +273,30 @@ Host roomba-rpi
     IdentityFile ~/.ssh/id_ed25519_roomba_rpi
 ```
 
-Como la IP la asigna el DHCP y cambia, actualizá `HostName` cuando cambie.
+Como la IP la asigna el DHCP y cambia, hay que actualizar `HostName` cuando cambie.
 
 Para comprobar que entra con la llave y no por la falta de contraseña:
 `ssh -o PreferredAuthentications=publickey roomba-rpi true`.
+
+### Crear el primer usuario y abrir el panel
+
+El repositorio no trae ninguna cuenta para el panel web: hay que crear al menos una en la
+rasp antes de poder iniciar sesión.
+
+```bash
+# desde: la rasp, por SSH (cualquier directorio)
+systemctl stop servidor
+/usr/bin/crear_usuario admin 'elegir-clave' /var/lib/roomba-disco/usuarios.conf
+chmod 600 /var/lib/roomba-disco/usuarios.conf
+systemctl start servidor
+systemctl status logica.service servidor.service --no-pager   # ambos deben estar activos
+```
+
+Después, en la PC (o en un celular de la misma red) se corre el cliente web y se escribe
+`<ip>:8080` en el campo de servidor del inicio de sesión. Los pasos están en
+[`Cliente/README.md`](Cliente/README.md) y en la sección 10 del [`README.md`](README.md) de la
+raíz. Opcionalmente se puede medir el consumo de la imagen con `medir_metricas.sh` (sección 7
+del README raíz).
 
 ---
 
@@ -281,8 +305,10 @@ Para comprobar que entra con la llave y no por la falta de contraseña:
 - **Recompilar tras cambiar código** en `Biblioteca/`, `Servidor/` o `Logica/`:
   `bitbake <receta>` (`libroombateca`, `servidor`, `logica`) y luego
   `bitbake core-image-minimal` para regenerar la imagen y reflashear.
-- **Probar en la Pi sin reflashear:** flujo de `devtool` documentado en
+- **Probar en la rasp sin reflashear:** flujo de `devtool` documentado en
   [`Yocto_min/README.md`](Yocto_min/README.md).
+- **Medir rootfs, arranque, RAM y CPU:** `medir_metricas.sh` ya viene en la imagen (método y
+  resultados en la sección 7 del [`README.md`](README.md) de la raíz).
 - **SDK para cross-compilar a mano:** `bitbake core-image-minimal -c populate_sdk`;
   instalador en `tmp/deploy/sdk/`. Hay que regenerarlo si cambian los headers de
   `libroombateca`, porque su sysroot es una foto del momento en que se generó.
@@ -296,6 +322,6 @@ Para comprobar que entra con la llave y no por la falta de contraseña:
 | Fetch falla con `git://` / código 128 | Agregar `PREMIRRORS` y `BB_FETCH_PREFERENCE` (paso 4). |
 | `Nothing PROVIDES 'cjson'` | Falta `meta-oe` en las capas (paso 5). |
 | `Unable to find file file://servidor.c` (o similar) | La capa `meta-robot` se movió fuera del clon (ver «Cosas a tener en cuenta»). |
-| El build se detiene por espacio | `BB_DISKMON_DIRS` corta con menos de 1 GB libre: liberá disco. `rm_work` ya está activo. |
-| La Pi no muestra `wlan0` | Imagen sin `kernel-module-brcmfmac-wcc`; el `local.conf` del repo ya lo incluye, revisá que no se haya borrado. |
+| El build se detiene por espacio | `BB_DISKMON_DIRS` corta con menos de 1 GB libre: liberar disco. `rm_work` ya está activo. |
+| La rasp no muestra `wlan0` | Imagen sin `kernel-module-brcmfmac-wcc`; el `local.conf` del repo ya lo incluye, revisar que no se haya borrado. |
 | El sistema se cuelga o se reinicia durante el build | Demasiados hilos para la RAM: bajar `BB_NUMBER_THREADS`/`PARALLEL_MAKE`. |
