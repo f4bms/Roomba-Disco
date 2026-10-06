@@ -34,7 +34,7 @@ int main(void) {
     assert(mapa_actualizar_pose(&mapa, &pose) == 0);
     assert(mapa.config.width == 15);
     assert(cell(&mapa, 14, 3) == MAPA_VISITADA);
-    pose.x_mm = 6000.0;
+    pose.x_mm = MAPA_DIMENSION_MAXIMA * config.resolution_mm;
     assert(mapa_actualizar_pose(&mapa, &pose) != 0);
     pose.x_mm = -500.0;
     assert(mapa_actualizar_pose(&mapa, &pose) == 0);

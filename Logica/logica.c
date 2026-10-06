@@ -273,12 +273,13 @@ static void control_tick(cJSON *state, odometria_t *odometria, mapa_t *mapa,
                              &encoder_readings[ENCODER_DERECHO]) != 0) return;
 
     const odometria_pose_t *pose = odometria_obtener_pose(odometria);
-    if (mapa_actualizar_pose(mapa, pose) != 0) return;
-    if (sensor_valid[SENSOR_FRONTAL]) {
+    // Si la pose se sale del mapa solo se deja de dibujar; el control sigue
+    bool mapa_ok = mapa_actualizar_pose(mapa, pose) == 0;
+    if (mapa_ok && sensor_valid[SENSOR_FRONTAL]) {
         mapa_observar(mapa, pose, 0.0, distances[SENSOR_FRONTAL] * 10.0,
                       distances[SENSOR_FRONTAL] < 20.0f);
     }
-    if (sensor_valid[SENSOR_TRASERO]) {
+    if (mapa_ok && sensor_valid[SENSOR_TRASERO]) {
         mapa_observar(mapa, pose, 3.14159265358979323846, distances[SENSOR_TRASERO] * 10.0,
                       distances[SENSOR_TRASERO] < 20.0f);
     }

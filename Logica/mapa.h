@@ -13,7 +13,7 @@ extern "C" {
 #define MAPA_VISITADA 1
 #define MAPA_OBSTACULO 2
 #define MAPA_LIBRE_OBSERVADA 3
-#define MAPA_DIMENSION_MAXIMA 50
+#define MAPA_DIMENSION_MAXIMA 100  /* celdas de 100 mm: hasta 10 m por lado */
 
 typedef struct {
     int width;
