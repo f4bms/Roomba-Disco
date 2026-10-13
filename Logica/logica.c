@@ -185,7 +185,10 @@ static void update_reported_map(cJSON *reported, const mapa_t *mapa) {
     cells = cJSON_CreateArray();
     if (cells == NULL) return;
     for (index = 0; index < mapa_cantidad_celdas(mapa); ++index) {
-        cJSON_AddItemToArray(cells, cJSON_CreateNumber(mapa_obtener_celdas(mapa)[index]));
+        unsigned char valor = mapa_obtener_celdas(mapa)[index];
+        // ASPIRADA es interna de la Logica: al cliente le llega como VISITADA
+        if (valor == MAPA_ASPIRADA) valor = MAPA_VISITADA;
+        cJSON_AddItemToArray(cells, cJSON_CreateNumber(valor));
     }
     if (cJSON_GetObjectItemCaseSensitive(reported_map, "cells") != NULL) {
         replace_item(reported_map, "cells", cells);
@@ -275,13 +278,17 @@ static void control_tick(cJSON *state, odometria_t *odometria, mapa_t *mapa,
     const odometria_pose_t *pose = odometria_obtener_pose(odometria);
     // Si la pose se sale del mapa solo se deja de dibujar; el control sigue
     bool mapa_ok = mapa_actualizar_pose(mapa, pose) == 0;
+    // Los sensores estan en el borde del robot y la pose es el centro: a la
+    // distancia medida se le suma el radio para ubicar bien el obstaculo
     if (mapa_ok && sensor_valid[SENSOR_FRONTAL]) {
-        mapa_observar(mapa, pose, 0.0, distances[SENSOR_FRONTAL] * 10.0,
-                      distances[SENSOR_FRONTAL] < 20.0f);
+        mapa_observar(mapa, pose, 0.0,
+                      distances[SENSOR_FRONTAL] * 10.0 + AUTO_RADIO_ROBOT_MM,
+                      distances[SENSOR_FRONTAL] < AUTO_DISTANCIA_OBSTACULO_CM);
     }
     if (mapa_ok && sensor_valid[SENSOR_TRASERO]) {
-        mapa_observar(mapa, pose, 3.14159265358979323846, distances[SENSOR_TRASERO] * 10.0,
-                      distances[SENSOR_TRASERO] < 20.0f);
+        mapa_observar(mapa, pose, 3.14159265358979323846,
+                      distances[SENSOR_TRASERO] * 10.0 + AUTO_RADIO_ROBOT_MM,
+                      distances[SENSOR_TRASERO] < AUTO_DISTANCIA_OBSTACULO_CM);
     }
 	//para manejo de bandera de cambio de modo
     if (auto_reset_pending) {

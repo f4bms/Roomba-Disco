@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "mapa.h"
 #include "odometria.h"
 
 #ifdef __cplusplus
@@ -17,8 +18,9 @@ extern "C" {
  *
  * Con AUTO_BUSCAR_ESQUINA = 1 el robot primero va a una esquina en donde busca:
  * topar pared, giro a la derecha y topar pared. De esta manera el barrido cubre toda la
- * habitacion aunque arranque en el centro. Con 0 empieza a barrer sin buscar la esquina.
- * Termina cuando el movimiento "lateral" ya no cabe, es decir, llega al borde.
+ * habitacion aunque arranque en el centro. Con 0 empieza a barrer sin buscar la esquina
+ * Cada "S" termina cuando el movimiento "lateral" ya no cabe (llega al borde). Con el
+ * mapa busca otra zona sin aspirar (ver "Navegacion con el mapa"); sin mapa ahi termina
  *
  * Rumbo absoluto: el rumbo del tramo 2 de la esquina (o el del arranque si no se busca esquina) 
  * queda como referencia "rumbo_fila". Todas las filas van a ir a rumbo_fila o a rumbo_fila + 180 grados
@@ -54,6 +56,24 @@ extern "C" {
 #define AUTO_GIRO_ANTICIPO_RAD 0.0 // ~CALIBRAR~ para compensar inercia, Si los giros se PASAN de 90°, SUBIR (ej. 0.05 = ~3°). Si se quedan cortos, BAJAR (minimo 0)
 #define AUTO_RUMBO_MAX_RAD  0.09  // ~CALIBRAR~ desvio maximo del rumbo durante una fila antes de parar y corregirlo (~5°). Si corrige demasiado seguido, SUBIR.
 
+/* ------------------------------------------------------------------------
+ * Navegacion con el mapa (mapa.c). Si logica.c le pasa el mapa con
+ * auto_usar_mapa(), cuando una "S" se corta (borde, fila vacia, mueble) en vez
+ * de terminar busca en el mapa la zona sin aspirar mas cercana, va hasta ella
+ * y empieza otra "S" ahi. Termina cuando no queda nada alcanzable sin aspirar.
+ * Sin mapa (NULL) se comporta como antes: la primera "S" que se corta termina.
+ * ------------------------------------------------------------------------ */
+#define AUTO_RADIO_ROBOT_MM     150.0  // robot de ~30 cm. Tambien es lo que hay del centro al ultrasonico
+#define AUTO_ANCHO_BOQUILLA_MM  120.0  // lo que se marca como aspirado en el mapa
+#define AUTO_VEL_IR             1000   // velocidad yendo hacia la zona pendiente
+#define AUTO_LLEGADA_MM          80.0  // a esta distancia de la zona ya se considera que llego
+#define AUTO_TRAMO_MAX_MM      1500.0  // tramo recto maximo antes de volver a planear
+#define AUTO_FALLOS_OBJETIVO_MAX  3    // intentos fallidos de llegar a una zona antes de descartarla
+#define AUTO_DESCARTE_RADIO_MM  250.0  // alrededor de una zona descartada no se vuelve a buscar
+#define AUTO_DESCARTES_MAX       64    // zonas descartadas que se recuerdan
+#define AUTO_BLOQUES_MAX         60    // "S" nuevas como maximo en un recorrido
+#define AUTO_TIMEOUT_IR_NS     6000000000ULL  // 6s por tramo
+
 //NS es de nanosegundos por el reloj que estamos usando
 #define AUTO_PAUSA_NS           300000000ULL  // parada entre maniobras (0.3s)
 #define AUTO_TIMEOUT_AVANZAR_NS 30000000000ULL // 30s - el sensor no agarró nada
@@ -78,6 +98,8 @@ typedef enum {
     AUTO_GIRAR,         // hasta el rumbo objetivo (absoluto)
     AUTO_MOVER,         // avanzar AUTO_PASO_MM hacia la siguiente fila
     AUTO_RETROCEDER,    // tras un atasco, alejarse AUTO_RETROCESO_MM
+    AUTO_PLANEAR,       // (con mapa) elegir la zona sin aspirar mas cercana y el siguiente tramo
+    AUTO_IR,            // (con mapa) avanzar en linea recta hacia el tramo elegido
     AUTO_FIN            // termina recorrido se detienen los motores
 } auto_fase_t;
 
@@ -105,7 +127,8 @@ typedef struct {
     auto_fase_t fase;
     auto_fase_t fase_siguiente;      //a donde ir al terminar PARAR
     auto_etapa_t etapa;
-    int giro_n;                      // 1 = hacia el lateral (luego MOVER), 2 = hacia la fila (luego AVANZAR)
+    int giro_n;                      // 1 = hacia el lateral (luego MOVER), 2 = hacia la fila (luego AVANZAR), 3 = hacia el tramo (luego IR)
+    int lateral;                     // -1 = el lateral va a la derecha de rumbo_fila, +1 = a la izquierda
     int sentido;                     // 0 = fila a rumbo_fila, 1 = fila de vuelta (rumbo_fila + 180)
     double rumbo_fila_rad;           // referencia de todas las filas
     double rumbo_objetivo_rad;       // a donde apunta el giro en curso (absoluto)
@@ -123,6 +146,19 @@ typedef struct {
     double atasco_ref_x_mm;
     double atasco_ref_y_mm;
     double atasco_ref_giro_rad;
+    //Para la parte de navegación con el mapa *******
+    mapa_t *mapa;                    // NULL = sin navegacion por mapa (se conserva en auto_reset)
+    bool tiene_objetivo;             // hay una zona pendiente elegida
+    double objetivo_x_mm;            // centro de la zona pendiente
+    double objetivo_y_mm;
+    double ir_x_mm;                  // final del tramo recto en curso
+    double ir_y_mm;
+    double ir_distancia_mm;
+    int fallos_objetivo;             // intentos fallidos de llegar a la zona
+    int bloques;                     // "S" empezadas desde una zona pendiente
+    int n_descartes;
+    double descartes_mm[AUTO_DESCARTES_MAX][2];  // zonas que no se vuelven a buscar
+	// *******
     const char *motivo_fin;          // el porqué termino (para log y pruebas)
 } auto_t;
 
@@ -130,6 +166,8 @@ void auto_init(auto_t *auto_estado);
 
 // Vuelve al estado inicial. logica.c lo llama cada vez que se entra a AUTO
 void auto_reset(auto_t *auto_estado);
+// Le da el mapa para navegar (NULL = sin mapa). logica.c lo llama una vez al arrancar
+void auto_usar_mapa(auto_t *auto_estado, mapa_t *mapa);
 bool auto_fin(const auto_t *auto_estado);
 
 // Cada paso de la maquina de estados (tick de control)
