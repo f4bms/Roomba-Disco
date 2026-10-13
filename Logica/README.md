@@ -231,21 +231,25 @@ pose.
 
 ## Control autónomo
 
-Con `mode = AUTO`, el ciclo de control llama a `auto_paso()` (`Logica/auto.c`), una máquina de estados que barre la habitación en forma de "S". Empieza buscando una esquina para luego iniciar el recorrido:
+Con `mode = AUTO`, el ciclo de control llama a `auto_paso()` (`Logica/auto.c`), una máquina de estados que barre la habitación en forma de "S". Recibe la pose de la odometría y las lecturas de los dos sensores (`auto_sensores_t`: frontal y trasero). Empieza buscando una esquina para luego iniciar el recorrido:
 
 ```text
-esquina: pared -> giro der 90 -> pared
+esquina: pared -> giro der 90 -> pared (este tramo va a lo largo de la pared 1 y ya aspira)
 barrido: fila -> obstáculo -> giro 90 -> mover 12 cm -> giro 90 -> fila ...
          (el lado del giro alterna derecha/izquierda en cada vuelta, de manera que mapea en forma de "S")
-atasco:  si el robot no avanza -> retrocede 5 cm -> sigue con la maniobra
-fin:     el movimiento lateral ya no cabe, la fila sale casi vacía o se atasca más de 3 veces seguidas
+rumbo:   si la fila se desvía más de 5°, para, corrige el rumbo y sigue la misma fila
+atasco:  si el robot no avanza -> retrocede 5 cm (o hasta que el sensor trasero vea algo) -> sigue con la maniobra
+fin:     el movimiento lateral ya no cabe, la fila sale casi vacía, se atasca más de 3 veces seguidas
+         o se cumple el tiempo máximo del recorrido (30 min)
 ```
 
-Fases: avanzar (recto hasta un obstáculo), parar (pausa corta entre maniobras), girar, mover (hacia la fila siguiente), retroceder (tras un atasco) y fin.
+Fases: avanzar (recto hasta un obstáculo), parar (pausa corta entre maniobras), girar, mover (hacia la fila siguiente), retroceder (tras un atasco) y fin. Al terminar, la Lógica imprime el motivo (`AUTO terminado: borde lateral`, por ejemplo), que queda en `motivo_fin`.
 
-**Obstáculo y atasco.** Con un obstáculo a menos de 20 cm (sensor frontal) termina la fila: el robot se detiene y gira. Además detecta un **atasco** con la odometría: si con los motores andando los encoders no registran avance en una ventana de 0.4 s (al menos 10 mm, o 0.05 rad en un giro), lo toma como un obstáculo que el ultrasónico no vio. Entonces retrocede unos 5 cm y retoma la maniobra. Una pausa de gracia de 0.5 s al empezar cada fase evita confundir la aceleración con un atasco. Si el robot se atasca más de 3 veces seguidas sin completar una maniobra (al cuarto atasco), termina el recorrido.
+**Giros a rumbo absoluto.** El rumbo del tramo 2 de la esquina queda como referencia (`rumbo_fila`). Las filas van a ese rumbo o al opuesto (+180°) y el movimiento lateral siempre a `rumbo_fila - 90°`. Cada giro apunta a uno de esos rumbos y no a "90° desde donde quedó", así el error de un giro no se arrastra al siguiente. En los últimos ~20° gira a `AUTO_VEL_GIRO_FINO`; si se pasa del rumbo, gira de vuelta en lugar de seguir.
 
-**Succión.** Se enciende (a la potencia máxima) solo durante el barrido, no mientras busca la esquina, y se apaga al frenar, al cambiar de modo y al terminar.
+**Obstáculo y atasco.** Con un obstáculo a menos de 20 cm (sensor frontal) termina la fila: el robot se detiene (con velocidad 1000 queda a unos 5 cm) y gira. El movimiento lateral usa el mismo umbral de 20 cm, porque frena igual. Además detecta un **atasco** con la odometría: si con los motores andando los encoders no registran avance en una ventana de 0.4 s (al menos 10 mm, o 0.05 rad en un giro), lo toma como un obstáculo que el ultrasónico no vio. Entonces retrocede unos 5 cm, sin retroceder si el sensor trasero ve algo a menos de 20 cm, y retoma la maniobra. Una pausa de gracia de 0.5 s al empezar cada fase evita confundir la aceleración con un atasco. Si el robot se atasca más de 3 veces seguidas sin completar una maniobra (al cuarto atasco), termina el recorrido.
+
+**Succión.** Se enciende (a la potencia máxima) desde el tramo 2 de la búsqueda de esquina (que recorre la pared 1) y durante el barrido, y se apaga al frenar, al cambiar de modo y al terminar.
 
 **Reglas del modo `AUTO`:**
 
@@ -253,20 +257,24 @@ Fases: avanzar (recto hasta un obstáculo), parar (pausa corta entre maniobras),
 - Cambiar de modo siempre frena los motores y apaga la succión; el recorrido autónomo empieza de cero cada vez que se entra a `AUTO`.
 - Al terminar, el robot se detiene y vuelve a `MANUAL` (se actualizan los LEDs y `revision`).
 
-Los parámetros (velocidades, paso entre filas, umbrales, tiempos y límites del atasco) están en `auto.h`:
+Los parámetros están en `auto.h`. Los marcados con **CALIBRAR** tienen al lado un comentario que indica cuándo subirlos o bajarlos al probar en el piso:
 
 | Parámetro | Valor |
 |---|---|
-| Distancia de obstáculo / fin de fila | 20 cm |
-| Paso entre filas | 120 mm (12 cm) |
+| Distancia de obstáculo / fin de fila (CALIBRAR) | 20 cm |
+| Tope del movimiento lateral (CALIBRAR) | 20 cm |
+| Tope del sensor trasero al retroceder | 20 cm |
+| Paso entre filas (CALIBRAR) | 120 mm (12 cm) |
 | Fila mínima | 50 mm |
-| Giro | 90° |
+| Giro: tolerancia / tramo fino / anticipo (CALIBRAR) | 0.04 rad (~2°) / 0.35 rad (~20°) / 0 |
+| Desvío máximo de rumbo en una fila (CALIBRAR) | 0.09 rad (~5°) |
 | Pausa entre maniobras | 0.3 s |
 | Tiempo máximo avanzando / girando / moviendo | 30 s / 4 s / 3 s |
+| Tiempo máximo de todo el recorrido | 30 min |
 | Atasco: gracia / ventana / avance mínimo | 0.5 s / 0.4 s / 10 mm (0.05 rad al girar) |
 | Retroceso tras un atasco | 50 mm, con límite de 0.8 s |
 | Atascos seguidos tolerados (el siguiente termina el recorrido) | 3 |
-| Velocidades (escala 0 a 1000) | 1000 en avance, movimiento, giro y retroceso |
+| Velocidades (escala 0 a 1000) | 1000 en avance, movimiento, giro y retroceso; 500 en el giro fino (CALIBRAR) |
 
 ## Audio integrado
 
@@ -312,7 +320,7 @@ Las pruebas de esta carpeta se compilan con `Servidor/CMakeLists.txt` y se regis
 | `odometria` | `test_odometria.c` | Avance recto, giro sobre el eje, reinicio, configuración inválida y punteros nulos |
 | `encoders_sim` | `test_encoders_sim.c` | Avance de ambas ruedas, giro con velocidades opuestas, detención de los motores y que la distancia deje de aumentar después de `STOP` |
 | `mapa` | `test_mapa.c` | Celdas visitadas, observación de celdas libres y obstáculos, crecimiento de la grilla y su límite |
-| `auto` | `test_auto.c` | Simula una "habitación" y comprueba la secuencia básica del barrido, el reinicio a mitad de recorrido y la detección de atasco girando y avanzando |
+| `auto` | `test_auto.c` | Pruebas unitarias de la máquina de estados (secuencia del barrido, reinicio a mitad de recorrido, atasco girando y avanzando, sensor trasero, corrección de sobregiro y de rumbo, tiempo total) y una simulación de un robot de 30 cm con la rampa de motores, el atraso del sensor y el freno, calibrada para frenar a ~5 cm como el robot real. Imprime una tabla de cobertura por escenario; con `test_auto mapa` dibuja además lo aspirado |
 
 ```bash
 # desde: la raíz del repositorio Roomba-Disco
