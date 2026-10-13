@@ -96,7 +96,9 @@ int mapa_actualizar_pose(mapa_t *mapa, const odometria_pose_t *pose) {
     if (mundo_a_celda_sin_limite(mapa, pose->x_mm, pose->y_mm, &x, &y) != 0) return -EINVAL;
     if (mapa_expandir(mapa, x, y) != 0) return -ERANGE;
     if (mundo_a_celda(mapa, pose->x_mm, pose->y_mm, &x, &y) != 0) return -ERANGE;
-    if (*celda(mapa, x, y) != MAPA_OBSTACULO) *celda(mapa, x, y) = MAPA_VISITADA;
+    if (*celda(mapa, x, y) != MAPA_OBSTACULO && *celda(mapa, x, y) != MAPA_ASPIRADA) {
+        *celda(mapa, x, y) = MAPA_VISITADA;
+    }
     return 0;
 }
 
@@ -118,15 +120,60 @@ int mapa_observar(mapa_t *mapa, const odometria_pose_t *pose, double angulo_sens
         if (x == previous_x && y == previous_y) continue;
         previous_x = x;
         previous_y = y;
-        if (traveled < distancia_mm || !obstaculo) {
+        if (traveled < distancia_mm - mapa->config.resolution_mm) {
             if (*celda(mapa, x, y) == MAPA_DESCONOCIDA) {
                 *celda(mapa, x, y) = MAPA_LIBRE_OBSERVADA;
             }
-        } else {
+        } else if (obstaculo && traveled >= distancia_mm) {
             *celda(mapa, x, y) = MAPA_OBSTACULO;
         }
     }
     return 0;
+}
+
+int mapa_marcar_aspirada(mapa_t *mapa, const odometria_pose_t *pose, double ancho_mm) {
+    double paso_mm;
+    int x;
+    int y;
+
+    if (mapa == NULL || pose == NULL || ancho_mm < 0.0) return -EINVAL;
+    paso_mm = mapa->config.resolution_mm / 2.0;
+    for (double k = -ancho_mm / 2.0; k <= ancho_mm / 2.0 + 1e-9; k += paso_mm) {
+        double px = pose->x_mm - k * sin(pose->theta_rad);
+        double py = pose->y_mm + k * cos(pose->theta_rad);
+        if (mundo_a_celda_sin_limite(mapa, px, py, &x, &y) != 0) continue;
+        if (mapa_expandir(mapa, x, y) != 0) continue;
+        if (mundo_a_celda(mapa, px, py, &x, &y) != 0) continue;
+        if (*celda(mapa, x, y) != MAPA_OBSTACULO) *celda(mapa, x, y) = MAPA_ASPIRADA;
+    }
+    return 0;
+}
+
+int mapa_marcar_obstaculo(mapa_t *mapa, double x_mm, double y_mm) {
+    int x;
+    int y;
+
+    if (mapa == NULL) return -EINVAL;
+    if (mundo_a_celda(mapa, x_mm, y_mm, &x, &y) != 0) return -ERANGE;
+    *celda(mapa, x, y) = MAPA_OBSTACULO;
+    return 0;
+}
+
+int mapa_celda_de_punto(const mapa_t *mapa, double x_mm, double y_mm, int *cell_x, int *cell_y) {
+    return mundo_a_celda(mapa, x_mm, y_mm, cell_x, cell_y);
+}
+
+void mapa_punto_de_celda(const mapa_t *mapa, int cell_x, int cell_y, double *x_mm, double *y_mm) {
+    *x_mm = (cell_x - mapa->config.origin_x + 0.5) * mapa->config.resolution_mm;
+    *y_mm = (cell_y - mapa->config.origin_y + 0.5) * mapa->config.resolution_mm;
+}
+
+unsigned char mapa_valor(const mapa_t *mapa, int cell_x, int cell_y) {
+    if (mapa == NULL || mapa->cells == NULL || cell_x < 0 || cell_y < 0
+            || cell_x >= mapa->config.width || cell_y >= mapa->config.height) {
+        return MAPA_DESCONOCIDA;
+    }
+    return mapa->cells[(size_t)cell_y * (size_t)mapa->config.width + (size_t)cell_x];
 }
 
 const unsigned char *mapa_obtener_celdas(const mapa_t *mapa) {
