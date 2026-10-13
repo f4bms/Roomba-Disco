@@ -138,6 +138,7 @@ add_test(NAME sha256 COMMAND test_sha256)
 
 add_executable(test_auto
     ../Logica/auto.c
+	../Logica/mapa.c
     ../Logica/test_auto.c
 )
 target_include_directories(test_auto PRIVATE
