@@ -107,7 +107,7 @@ libroombateca (real o simulada)
 1. Lee los dos sensores, frontal y trasero, y los dos encoders.
 2. Detecta obstáculos: hay obstáculo si algún sensor válido mide menos de 20 cm. Al aparecer, enciende el LED de alerta y dispara una vez la alerta sonora (en modo `AUTO` además detiene los motores). La alerta no se repite mientras el obstáculo siga presente.
 3. Sincroniza las dos ruedas (ver abajo).
-4. Actualiza la odometría y, con la pose, el mapa: marca la celda visitada y observa con cada sensor.
+4. Actualiza la odometría y, con la pose, el mapa: marca la celda visitada y observa con cada sensor (a la distancia medida se le suma el radio del robot, porque los sensores están en el borde y la pose es el centro).
 5. Si el modo es `AUTO`, ejecuta un paso del modo autónomo y aplica la orden que devuelve.
 6. Actualiza `reported.sensors`, `reported.pose`, el audio y el mapa.
 
@@ -227,7 +227,10 @@ pose.
 1 = visitada por el robot
 2 = obstaculo
 3 = libre observada por un sensor
+4 = aspirada (solo interna: al cliente se le reporta como 1)
 ```
+
+Al observar con un sensor, las celdas se marcan libres hasta 100 mm antes del eco; la celda donde rebota queda sin marcar (o como obstáculo si mide menos de 20 cm). El estado 4 lo marca el modo `AUTO` con el ancho de la boquilla cuando la aspiradora está encendida, y no se rebaja a 1 si el robot vuelve a pasar. El mapa y la odometría se conservan al cambiar de modo (lo recorrido en `MANUAL` se mantiene) hasta reiniciar la Lógica.
 
 ## Control autónomo
 
@@ -239,13 +242,23 @@ barrido: fila -> obstáculo -> giro 90 -> mover 12 cm -> giro 90 -> fila ...
          (el lado del giro alterna derecha/izquierda en cada vuelta, de manera que mapea en forma de "S")
 rumbo:   si la fila se desvía más de 5°, para, corrige el rumbo y sigue la misma fila
 atasco:  si el robot no avanza -> retrocede 5 cm (o hasta que el sensor trasero vea algo) -> sigue con la maniobra
-fin:     el movimiento lateral ya no cabe, la fila sale casi vacía, se atasca más de 3 veces seguidas
+fin de "S": el movimiento lateral ya no cabe o la fila sale casi vacía
+         -> con el mapa: planear -> ir a la zona sin aspirar más cercana -> otra "S" ahí
+fin:     no queda zona sin aspirar alcanzable en el mapa, se atasca más de 3 veces seguidas
          o se cumple el tiempo máximo del recorrido (30 min)
 ```
 
-Fases: avanzar (recto hasta un obstáculo), parar (pausa corta entre maniobras), girar, mover (hacia la fila siguiente), retroceder (tras un atasco) y fin. Al terminar, la Lógica imprime el motivo (`AUTO terminado: borde lateral`, por ejemplo), que queda en `motivo_fin`.
+Fases: avanzar (recto hasta un obstáculo), parar (pausa corta entre maniobras), girar, mover (hacia la fila siguiente), retroceder (tras un atasco), planear y ir (navegación con el mapa) y fin. Al terminar, la Lógica imprime el motivo (`AUTO terminado: borde lateral`, por ejemplo), que queda en `motivo_fin`.
 
 **Giros a rumbo absoluto.** El rumbo del tramo 2 de la esquina queda como referencia (`rumbo_fila`). Las filas van a ese rumbo o al opuesto (+180°) y el movimiento lateral siempre a `rumbo_fila - 90°`. Cada giro apunta a uno de esos rumbos y no a "90° desde donde quedó", así el error de un giro no se arrastra al siguiente. En los últimos ~20° gira a `AUTO_VEL_GIRO_FINO`; si se pasa del rumbo, gira de vuelta en lugar de seguir.
+
+**Navegación con el mapa.** `logica.c` le pasa a `auto.c` el mismo mapa que se reporta al cliente (`auto_usar_mapa()`). Cuando una "S" se corta, en lugar de terminar:
+
+1. **Planear:** busca en el mapa, con una búsqueda en anchura desde la celda del robot, la celda sin aspirar más cercana. Solo pasa por celdas *transitables*: piso conocido (visitado, libre observado o aspirado) en todo lo que ocupa el robot (la celda y sus 8 vecinas). Así no se planea pegado a una pared ni por lo desconocido.
+2. **Ir:** del camino encontrado toma el punto más lejano al que se llega en línea recta (máximo 1.5 m), gira hacia él y avanza. Si el ultrasónico ve algo o se atasca, vuelve a planear con el mapa actualizado (el atasco queda marcado como obstáculo).
+3. **Otra "S":** al llegar empieza una "S" nueva con las filas paralelas a las de la primera, hacia el lado donde el mapa muestra más por aspirar.
+
+Una zona que no se logra alcanzar en 3 intentos, o donde ya empezó una "S", se descarta (no se vuelve a buscar en 25 cm a la redonda). El recorrido termina con "mapa completo" cuando no queda ninguna zona sin aspirar alcanzable. Sin mapa (`auto_usar_mapa(NULL)`), la primera "S" que se corta termina el recorrido.
 
 **Obstáculo y atasco.** Con un obstáculo a menos de 20 cm (sensor frontal) termina la fila: el robot se detiene (con velocidad 1000 queda a unos 5 cm) y gira. El movimiento lateral usa el mismo umbral de 20 cm, porque frena igual. Además detecta un **atasco** con la odometría: si con los motores andando los encoders no registran avance en una ventana de 0.4 s (al menos 10 mm, o 0.05 rad en un giro), lo toma como un obstáculo que el ultrasónico no vio. Entonces retrocede unos 5 cm, sin retroceder si el sensor trasero ve algo a menos de 20 cm, y retoma la maniobra. Una pausa de gracia de 0.5 s al empezar cada fase evita confundir la aceleración con un atasco. Si el robot se atasca más de 3 veces seguidas sin completar una maniobra (al cuarto atasco), termina el recorrido.
 
@@ -274,6 +287,9 @@ Los parámetros están en `auto.h`. Los marcados con **CALIBRAR** tienen al lado
 | Atasco: gracia / ventana / avance mínimo | 0.5 s / 0.4 s / 10 mm (0.05 rad al girar) |
 | Retroceso tras un atasco | 50 mm, con límite de 0.8 s |
 | Atascos seguidos tolerados (el siguiente termina el recorrido) | 3 |
+| Radio del robot / ancho de la boquilla | 150 mm / 120 mm |
+| Navegación: llegada / tramo recto máximo / tiempo por tramo | 80 mm / 1.5 m / 6 s |
+| Navegación: intentos por zona / radio de descarte / "S" máximas | 3 / 25 cm / 60 |
 | Velocidades (escala 0 a 1000) | 1000 en avance, movimiento, giro y retroceso; 500 en el giro fino (CALIBRAR) |
 
 ## Audio integrado
@@ -319,8 +335,8 @@ Las pruebas de esta carpeta se compilan con `Servidor/CMakeLists.txt` y se regis
 |---|---|---|
 | `odometria` | `test_odometria.c` | Avance recto, giro sobre el eje, reinicio, configuración inválida y punteros nulos |
 | `encoders_sim` | `test_encoders_sim.c` | Avance de ambas ruedas, giro con velocidades opuestas, detención de los motores y que la distancia deje de aumentar después de `STOP` |
-| `mapa` | `test_mapa.c` | Celdas visitadas, observación de celdas libres y obstáculos, crecimiento de la grilla y su límite |
-| `auto` | `test_auto.c` | Pruebas unitarias de la máquina de estados (secuencia del barrido, reinicio a mitad de recorrido, atasco girando y avanzando, sensor trasero, corrección de sobregiro y de rumbo, tiempo total) y una simulación de un robot de 30 cm con la rampa de motores, el atraso del sensor y el freno, calibrada para frenar a ~5 cm como el robot real. Imprime una tabla de cobertura por escenario; con `test_auto mapa` dibuja además lo aspirado |
+| `mapa` | `test_mapa.c` | Celdas visitadas, observación de celdas libres y obstáculos (con el margen antes del eco), crecimiento de la grilla y su límite, celdas aspiradas, obstáculos marcados y conversión punto/celda |
+| `auto` | `test_auto.c` | Pruebas unitarias de la máquina de estados (secuencia del barrido, reinicio a mitad de recorrido, atasco girando y avanzando, sensor trasero, corrección de sobregiro y de rumbo, tiempo total, fin de "S" con y sin mapa, planear e ir a una zona pendiente) y una simulación de un robot de 30 cm con la rampa de motores, el atraso del sensor y el freno, calibrada para frenar a ~5 cm como el robot real. Imprime una tabla de cobertura por escenario, sin mapa y con mapa; con `test_auto mapa` dibuja además lo aspirado |
 
 ```bash
 # desde: la raíz del repositorio Roomba-Disco
