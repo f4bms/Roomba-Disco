@@ -19,6 +19,7 @@
  */
 
 #include "auto.h"
+#include "mapa.h"
 
 #include <assert.h>
 #include <math.h>
@@ -60,7 +61,8 @@ typedef struct {
     int n_cajas;
     caja_t cajas[4];
     double x0, y0, theta0;       /* pose de arranque */
-    double cobertura_min;        /* lo que se exige en el assert (%) */
+    double min_sin_mapa;         /* cobertura que se exige en el assert (%) */
+    double min_con_mapa;
 } mundo_t;
 
 //* distancia desde (x,y) siguiendo el angulo hasta la primera pared o caja (obstáculo)
@@ -181,9 +183,11 @@ typedef struct {
     auto_t a;
     odometria_pose_t historial[SIM_RETRASO_TICKS + 1];
     uint64_t t;
+    int con_mapa;
+    mapa_t mapa;
 } sim_t;
 
-static void sim_init(sim_t *s, const mundo_t *m) {
+static void sim_init(sim_t *s, const mundo_t *m, int con_mapa) {
     int k;
     memset(s, 0, sizeof(*s));
     s->mundo = m;
@@ -192,6 +196,16 @@ static void sim_init(sim_t *s, const mundo_t *m) {
     for (k = 0; k <= SIM_RETRASO_TICKS; ++k) s->historial[k] = s->robot.pose;
     s->t = 1000ULL * MS;
     auto_init(&s->a);
+    s->con_mapa = con_mapa;
+    if (con_mapa) {            // igual que en main() de logica.c
+        assert(mapa_init(&s->mapa, (mapa_config_t){.width = 8, .height = 6,
+                         .resolution_mm = 100.0, .origin_x = 4, .origin_y = 3}) == 0);
+        auto_usar_mapa(&s->a, &s->mapa);
+    }
+}
+
+static void sim_cerrar(sim_t *s) {
+    if (s->con_mapa) mapa_cleanup(&s->mapa);
 }
 
 // un tick de control: medir, decidir (auto_paso) y mover 
@@ -204,6 +218,17 @@ static auto_orden_t sim_tick(sim_t *s) {
     s->historial[0] = s->robot.pose;
     lect.frontal_cm = sensor_cm(s->mundo, &s->historial[SIM_RETRASO_TICKS], 0.0, &lect.frontal_ok);
     lect.trasero_cm = sensor_cm(s->mundo, &s->historial[SIM_RETRASO_TICKS], PI_, &lect.trasero_ok);
+    if (s->con_mapa) {         // igual que en control_tick() de logica.c
+        const odometria_pose_t *pose = &s->robot.pose;
+        if (mapa_actualizar_pose(&s->mapa, pose) == 0) {
+            if (lect.frontal_ok)
+                mapa_observar(&s->mapa, pose, 0.0, lect.frontal_cm * 10.0 + AUTO_RADIO_ROBOT_MM,
+                              lect.frontal_cm < AUTO_DISTANCIA_OBSTACULO_CM);
+            if (lect.trasero_ok)
+                mapa_observar(&s->mapa, pose, PI_, lect.trasero_cm * 10.0 + AUTO_RADIO_ROBOT_MM,
+                              lect.trasero_cm < AUTO_DISTANCIA_OBSTACULO_CM);
+        }
+    }
     o = auto_paso(&s->a, &s->robot.pose, &lect, s->t += DT_MS * MS);
     robot_paso(&s->robot, s->mundo, o);
     return o;
@@ -241,13 +266,13 @@ typedef struct {
     const char *motivo;
 } resultado_t;
 
-static resultado_t simular(const mundo_t *m, int imprimir_mapa) {
+static resultado_t simular(const mundo_t *m, int con_mapa, int imprimir_mapa) {
     static sim_t s;
     resultado_t res;
     int i, cx, cy, total = 0, vistas = 0;
 
     memset(aspirado, 0, sizeof(aspirado));
-    sim_init(&s, m);
+    sim_init(&s, m, con_mapa);
     for (i = 0; i < SIM_MAX_TICKS && !auto_fin(&s.a); ++i) {
         double x0 = s.robot.pose.x_mm, y0 = s.robot.pose.y_mm, th0 = s.robot.pose.theta_rad;
         auto_orden_t o = sim_tick(&s);
@@ -274,6 +299,7 @@ static resultado_t simular(const mundo_t *m, int imprimir_mapa) {
     res.fin = auto_fin(&s.a);
     res.contactos = s.robot.contactos;
     res.motivo = s.a.motivo_fin;
+    sim_cerrar(&s);
 
     if (imprimir_mapa) {      /* '.' aspirado, 'o' sin aspirar, '#' mueble (1 caracter = 4x6 cm) */
         for (cy = (int)(m->h / CELDA_MM) - 1; cy >= 0; cy -= 3) {
@@ -510,6 +536,90 @@ static void test_tiempo_total(void) {
     assert(auto_fin(&a) && strcmp(a.motivo_fin, "tiempo total") == 0);
 }
 
+/* ----------------------------------------------------------------------
+ * Navegacion con el mapa
+ * ---------------------------------------------------------------------- */
+/* mapa de 3 x 3 m (celdas de 100 mm, origen en la esquina) todo en un valor */
+static void mapa_lleno(mapa_t *m, unsigned char valor) {
+    size_t i;
+    assert(mapa_init(m, (mapa_config_t){.width = 30, .height = 30, .resolution_mm = 100.0,
+                                        .origin_x = 0, .origin_y = 0}) == 0);
+    for (i = 0; i < mapa_cantidad_celdas(m); ++i) m->cells[i] = valor;
+}
+
+/* Con mapa, cuando la "S" se corta no termina: pasa a planear. Sin mapa termina. */
+static void test_fin_de_bloque_con_y_sin_mapa(void) {
+    mapa_t m;
+    int con;
+
+    mapa_lleno(&m, MAPA_ASPIRADA);
+    for (con = 0; con <= 1; ++con) {
+        auto_t a;
+        odometria_pose_t pose = {1500, 1500, 0};
+        uint64_t t = 1000ULL * MS;
+        auto_sensores_t pared = sens(10.0f, true);
+
+        auto_init(&a);
+        if (con) auto_usar_mapa(&a, &m);
+        auto_paso(&a, &pose, &pared, t);                 /* arranque */
+        a.etapa = AUTO_ETAPA_BARRIDO;                    /* simula estar en el lateral */
+        a.fase = AUTO_MOVER;
+        a.inicio_fase_ns = t;
+        a.x_inicio_mm = pose.x_mm;
+        a.y_inicio_mm = pose.y_mm;
+        auto_paso(&a, &pose, &pared, t += 100 * MS);     /* no cabe otra fila */
+        if (con) {
+            assert(a.fase == AUTO_PARAR && a.fase_siguiente == AUTO_PLANEAR);
+            auto_paso(&a, &pose, &pared, t += 400 * MS);
+            auto_paso(&a, &pose, &pared, t += 100 * MS); /* planea: todo aspirado */
+            assert(auto_fin(&a) && strcmp(a.motivo_fin, "mapa completo") == 0);
+        } else {
+            assert(auto_fin(&a) && strcmp(a.motivo_fin, "borde lateral") == 0);
+        }
+    }
+    mapa_cleanup(&m);
+}
+
+/* Queda una zona sin aspirar: planea, gira hacia ella, va (IR) y al llegar
+ * empieza otra "S" ahi. */
+static void test_planear_va_a_zona_pendiente(void) {
+    mapa_t m;
+    auto_t a;
+    odometria_pose_t pose = {1000, 1500, 0};
+    uint64_t t = 1000ULL * MS;
+    auto_sensores_t libre = sens(150.0f, true);
+    auto_orden_t o;
+    int x, y;
+
+    mapa_lleno(&m, MAPA_ASPIRADA);
+    for (y = 13; y <= 17; ++y)                           /* zona de 50 x 50 cm sin aspirar */
+        for (x = 23; x <= 27; ++x) m.cells[y * 30 + x] = MAPA_VISITADA;
+    auto_init(&a);
+    auto_usar_mapa(&a, &m);
+    auto_reset(&a);
+    assert(a.mapa == &m);                                /* reset no pierde el mapa */
+    auto_paso(&a, &pose, &libre, t);
+    a.fase = AUTO_PLANEAR;
+    o = auto_paso(&a, &pose, &libre, t += 100 * MS);
+    assert(es(o, "STOP") && a.tiene_objetivo && a.giro_n == 3);
+    assert(fabs(a.objetivo_x_mm - 2350.0) < 1.0);        /* la celda pendiente mas cercana */
+    assert(fabs(a.rumbo_objetivo_rad) < 0.1);            /* esta adelante */
+    auto_paso(&a, &pose, &libre, t += 400 * MS);         /* termina la pausa: GIRAR */
+    o = auto_paso(&a, &pose, &libre, t += 100 * MS);     /* ya mira hacia alla */
+    assert(es(o, "STOP") && a.fase_siguiente == AUTO_IR);
+    o = auto_paso(&a, &pose, &libre, t += 400 * MS);
+    assert(es(o, "FWD") && a.fase == AUTO_IR);
+    pose.x_mm = 2320.0;
+    pose.y_mm = 1550.0;
+    o = auto_paso(&a, &pose, &libre, t += 100 * MS);     /* llego al final del tramo */
+    assert(es(o, "STOP") && a.fase_siguiente == AUTO_PLANEAR);
+    auto_paso(&a, &pose, &libre, t += 400 * MS);
+    auto_paso(&a, &pose, &libre, t += 100 * MS);         /* planea: ya esta en la zona */
+    assert(a.bloques == 1 && a.etapa == AUTO_ETAPA_BARRIDO && !a.tiene_objetivo);
+    assert(a.fase == AUTO_PARAR && a.fase_siguiente == AUTO_GIRAR && a.giro_n == 2);
+    mapa_cleanup(&m);
+}
+
 /* ======================================================================
  * Pruebas con la simulacion
  * ====================================================================== */
@@ -517,12 +627,12 @@ static void test_tiempo_total(void) {
 /* Calibracion del simulador: con el umbral de 20 cm el robot real frena a ~5 cm.
  * Si esta prueba falla tras cambiar velocidades, recalibrar SIM_* o el umbral. */
 static void test_frenado(void) {
-    mundo_t pasillo = {"pasillo", 3000.0, 1000.0, 0, {{0, 0, 0, 0}}, 500.0, 500.0, 0.0, 0.0};
+    mundo_t pasillo = {"pasillo", 3000.0, 1000.0, 0, {{0, 0, 0, 0}}, 500.0, 500.0, 0.0, 0.0, 0.0};
     static sim_t s;
     double hueco_cm;
     int i;
 
-    sim_init(&s, &pasillo);
+    sim_init(&s, &pasillo, 0);
     for (i = 0; i < 200 && s.a.fase != AUTO_GIRAR; ++i) sim_tick(&s);
     hueco_cm = (pasillo.w - SIM_RADIO_MM - s.robot.pose.x_mm) / 10.0;
     printf("Frenado a velocidad %d: queda a %.1f cm de la pared (robot real: ~5 cm)\n",
@@ -534,13 +644,13 @@ static void test_frenado(void) {
 /* Con la fisica del simulador, los giros del barrido deben quedar cerca de 90
  * grados (como en el robot real). Se miden los primeros giros en una sala grande. */
 static void test_giros_simulados(void) {
-    mundo_t sala = {"sala", 4000.0, 4000.0, 0, {{0, 0, 0, 0}}, 2000.0, 600.0, 0.0, 0.0};
+    mundo_t sala = {"sala", 4000.0, 4000.0, 0, {{0, 0, 0, 0}}, 2000.0, 600.0, 0.0, 0.0, 0.0};
     static sim_t s;
     const char *previa = "STOP";
     double peor = 0.0;
     int i, giros = 0;
 
-    sim_init(&s, &sala);
+    sim_init(&s, &sala, 0);
     for (i = 0; i < 3000 && giros < 6; ++i) {
         auto_orden_t o = sim_tick(&s);
         if (strncmp(previa, "TURN", 4) == 0 && strncmp(o.direccion, "TURN", 4) != 0
@@ -562,19 +672,18 @@ static void test_giros_simulados(void) {
 }
 
 int main(int argc, char **argv) {
-    /* La ultima columna es la cobertura minima exigida. Con muebles es baja a
-     * proposito: la S se corta en el mueble y hoy termina ("borde lateral").
-     * Es lo que se va a mejorar usando el mapa (mapa.c); al hacerlo, subir estos
-     * minimos. */
+    /* Las dos ultimas columnas son la cobertura minima exigida sin mapa y con
+     * mapa. Sin mapa, con muebles es baja: la "S" se corta en el mueble y
+     * termina. Con mapa, al cortarse busca la zona sin aspirar mas cercana. */
     static const mundo_t mundos[] = {
-        {"vacia 3x2 m, desde el centro", 3000, 2000, 0, {{0, 0, 0, 0}}, 1500, 1000, 0.0, 80.0},
-        {"vacia 3x2 m, junto a pared",  3000, 2000, 0, {{0, 0, 0, 0}}, 600, 400, PI_ / 2, 80.0},
-        {"caja 50x50 en medio",         3000, 2000, 1, {{1400, 700, 1900, 1200}}, 400, 400, 0.0, 20.0},
+        {"vacia 3x2 m, desde el centro", 3000, 2000, 0, {{0, 0, 0, 0}}, 1500, 1000, 0.0, 80.0, 80.0},
+        {"vacia 3x2 m, junto a pared",  3000, 2000, 0, {{0, 0, 0, 0}}, 600, 400, PI_ / 2, 80.0, 80.0},
+        {"caja 50x50 en medio",         3000, 2000, 1, {{1400, 700, 1900, 1200}}, 400, 400, 0.0, 20.0, 80.0},
         {"sala 4x3 m con 3 muebles",    4000, 3000, 3, {{1500, 1200, 2300, 1800},
                                                         {0, 2400, 600, 3000},
-                                                        {3200, 0, 4000, 500}}, 800, 800, 0.3, 5.0},
+                                                        {3200, 0, 4000, 500}}, 800, 800, 0.3, 5.0, 55.0},
         {"cuarto 3.5x3 m cama+escritorio", 3500, 3000, 2, {{0, 0, 1400, 2000},
-                                                           {2700, 2400, 3500, 3000}}, 2200, 1200, 1.2, 55.0},
+                                                           {2700, 2400, 3500, 3000}}, 2200, 1200, 1.2, 55.0, 85.0},
     };
     const int n = (int)(sizeof(mundos) / sizeof(mundos[0]));
     int mapa = argc > 1 && strcmp(argv[1], "mapa") == 0;
@@ -588,20 +697,26 @@ int main(int argc, char **argv) {
     test_giro_corrige_sobregiro();
     test_corrige_rumbo_en_fila();
     test_tiempo_total();
+    test_fin_de_bloque_con_y_sin_mapa();
+    test_planear_va_a_zona_pendiente();
     test_frenado();
     test_giros_simulados();
 
     /* Tabla de cobertura. "contactos" = ticks en que el cuerpo toco algo que el
-     * sensor no vio (esquinas de muebles al costado); se resuelve como atasco. */
-    printf("\n%-32s %9s %8s %10s  %s\n", "Escenario", "cobertura", "tiempo", "contactos", "motivo de fin");
+     * sensor no vio (esquinas de muebles al costado); se resuelve como atasco.
+     * Tiempo, contactos y motivo son del recorrido con mapa. */
+    printf("\n%-32s %9s %9s %7s %9s  %s\n", "Escenario", "sin mapa", "con mapa",
+           "tiempo", "contactos", "motivo de fin");
     for (i = 0; i < n; ++i) {
-        resultado_t r = simular(&mundos[i], 0);
-        printf("%-32s %8.1f%% %7.0fs %10d  %s\n", mundos[i].nombre, r.cobertura,
-               r.segundos, r.contactos, r.motivo);
-        assert(r.fin);                                   /* siempre termina */
-        assert(r.cobertura >= mundos[i].cobertura_min);
-        if (mundos[i].n_cajas == 0) assert(r.contactos == 0);   /* sala vacia: nunca toca */
-        if (mapa) { simular(&mundos[i], 1); putchar('\n'); }
+        resultado_t r0 = simular(&mundos[i], 0, 0);
+        resultado_t r = simular(&mundos[i], 1, 0);
+        printf("%-32s %8.1f%% %8.1f%% %6.0fs %9d  %s\n", mundos[i].nombre, r0.cobertura,
+               r.cobertura, r.segundos, r.contactos, r.motivo);
+        assert(r0.fin && r.fin);                         /* siempre termina */
+        assert(r0.cobertura >= mundos[i].min_sin_mapa);
+        assert(r.cobertura >= mundos[i].min_con_mapa);
+        if (mundos[i].n_cajas == 0) assert(r0.contactos == 0 && r.contactos == 0);  /* sala vacia: nunca toca */
+        if (mapa) { simular(&mundos[i], 1, 1); putchar('\n'); }
     }
     printf("test_auto OK\n");
     return 0;
