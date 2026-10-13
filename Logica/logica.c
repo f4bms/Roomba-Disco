@@ -295,12 +295,17 @@ static void control_tick(cJSON *state, odometria_t *odometria, mapa_t *mapa,
             auto_reset(auto_estado);
             *auto_activo = true;
         }
-		//para el auto paso recibe todas las lecturas de los sensores
-        orden = auto_paso(auto_estado, pose,
-                              distances[SENSOR_FRONTAL], sensor_valid[SENSOR_FRONTAL],
-                              monotonic_now_ns());
+		//para el auto paso recibe las lecturas de los dos sensores
+        {
+            const auto_sensores_t lecturas = {
+                distances[SENSOR_FRONTAL], sensor_valid[SENSOR_FRONTAL],
+                distances[SENSOR_TRASERO], sensor_valid[SENSOR_TRASERO],
+            };
+            orden = auto_paso(auto_estado, pose, &lecturas, monotonic_now_ns());
+        }
         if (auto_fin(auto_estado)) {
             // TErmina el recorrido, entonces frena y devuelve el control al modo manual.
+            printf("AUTO terminado: %s\n", auto_estado->motivo_fin);
             finish_auto(state);
             *auto_activo = false;
         } else if (roombateca_set_motion(orden.direccion, orden.velocidad) == 0) {

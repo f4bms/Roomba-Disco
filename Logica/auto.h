@@ -18,30 +18,48 @@ extern "C" {
  * Con AUTO_BUSCAR_ESQUINA = 1 el robot primero va a una esquina en donde busca:
  * topar pared, giro a la derecha y topar pared. De esta manera el barrido cubre toda la
  * habitacion aunque arranque en el centro. Con 0 empieza a barrer sin buscar la esquina.
- * Termina cuando el movimiento "lateral" ya no cabe, es decir, llega al borde. */
+ * Termina cuando el movimiento "lateral" ya no cabe, es decir, llega al borde.
+ *
+ * Rumbo absoluto: el rumbo del tramo 2 de la esquina (o el del arranque si no se busca esquina) 
+ * queda como referencia "rumbo_fila". Todas las filas van a ir a rumbo_fila o a rumbo_fila + 180 grados
+ * y el movimiento lateral siempre a rumbo_fila - 90 grados. Cada giro apunta a uno de esos rumbos, 
+ * no a "90 grados desde donde queda", asi el error de un giro no se arrastra al siguiente. */
 #define AUTO_BUSCAR_ESQUINA 1
+
+/* ------------------------------------------------------------------------
+ * Parametros que tienen ~CALIBRAR~: ajustar ya con el robot armado en el piso.
+ * ------------------------------------------------------------------------ */
 
 // Definimos las velocidades Entre 0-1000 de roombateca_set_motion
 #define AUTO_VEL_AVANCE 1000
 #define AUTO_VEL_MOVER 1000
 #define AUTO_VEL_GIRO   1000
 #define AUTO_VEL_RETROCEDER 1000
-
+/* CALIBRAR: velocidad del giro del ultimo tramo (ver AUTO_GIRO_FINO_RAD).
+ * Si el robot no se mueve al llegar significa que hay que suirlo porque los motores no 
+ * arrancan con poca potencia. Y bajarlo si se sigue pasando del angulo */
+#define AUTO_VEL_GIRO_FINO 500 //~CALIBRAR~
 // Definimos distancias:
 // El paso es del ancho de boquilla, según el modelo3D 12cm
-#define AUTO_DISTANCIA_OBSTACULO_CM 20.0f  // fin de fila 
-#define AUTO_DISTANCIA_MOVER_CM   10.0f    // tope durante el movimiento lateral
+#define AUTO_DISTANCIA_OBSTACULO_CM 20.0f  // ~CALIBRAR~ Si toca la pared, SUBIR. Si queda muy lejos, BAJAR.
+#define AUTO_DISTANCIA_MOVER_CM   20.0f // ~CALIBRAR~: tope durante el movimiento lateral
+#define AUTO_DISTANCIA_TRASERA_CM 20.0f // ~CALIBRAR~: Tope del sensor trasero mientras retrocede
 #define AUTO_PASO_MM        120.0          // 12 cm entre filas
 #define AUTO_FILA_MIN_MM     50.0          // fila mas corta que = fin
 
 #define AUTO_GIRO_RAD       1.5707963267948966  // 90 grados
-#define AUTO_GIRO_ANTICIPO_RAD 0.0   // parar para compensar inercia
+#define AUTO_GIRO_TOL_RAD   0.04  // ~CALIBRAR~ tolerancia para dar por terminado un giro. Si se queda gira a un lado y al otro sin terminar: SUBIR.
+#define AUTO_GIRO_FINO_RAD  0.35  // Cuando faltan menos de 20° baja la velocidad para mejorar precisión
+/* CALIBRAR: parar el giro antes de llegar, para compensar la inercia. . Hoy los giros quedan cerca de 90, por eso 0. */
+#define AUTO_GIRO_ANTICIPO_RAD 0.0 // ~CALIBRAR~ para compensar inercia, Si los giros se PASAN de 90°, SUBIR (ej. 0.05 = ~3°). Si se quedan cortos, BAJAR (minimo 0)
+#define AUTO_RUMBO_MAX_RAD  0.09  // ~CALIBRAR~ desvio maximo del rumbo durante una fila antes de parar y corregirlo (~5°). Si corrige demasiado seguido, SUBIR.
 
 //NS es de nanosegundos por el reloj que estamos usando
 #define AUTO_PAUSA_NS           300000000ULL  // parada entre maniobras (0.3s)
 #define AUTO_TIMEOUT_AVANZAR_NS 30000000000ULL // 30s - el sensor no agarró nada
 #define AUTO_TIMEOUT_GIRO_NS   4000000000ULL  // 4s
 #define AUTO_TIMEOUT_MOVER_NS  3000000000ULL  // 3s
+#define AUTO_TIMEOUT_TOTAL_NS  (30ULL * 60ULL * 1000000000ULL) // límite de todo el recorrido: 30 min
 
 // Atasco: con los motores andando, si la odometria (encoders) no avanza en una
 // ventana se toma como obstaculo que el ultrasonico no vio. La gracia evita
@@ -57,7 +75,7 @@ extern "C" {
 typedef enum {
     AUTO_AVANZAR = 0,   // fila: recto hasta obstaculo
     AUTO_PARAR,         // pausa corta entre maniobras
-    AUTO_GIRAR,         // 90 grados dependiendo del 'lado' 
+    AUTO_GIRAR,         // hasta el rumbo objetivo (absoluto)
     AUTO_MOVER,         // avanzar AUTO_PASO_MM hacia la siguiente fila
     AUTO_RETROCEDER,    // tras un atasco, alejarse AUTO_RETROCESO_MM
     AUTO_FIN            // termina recorrido se detienen los motores
@@ -65,35 +83,47 @@ typedef enum {
 
 typedef enum {
     AUTO_ETAPA_ESQUINA_1 = 0,  // nos movemos a la primera pared
-    AUTO_ETAPA_ESQUINA_2,      // nos movemos a la segunda pared (quedamos en esquina)
+    AUTO_ETAPA_ESQUINA_2,      // a la segunda pared, a lo largo de la primera (ya aspira)
     AUTO_ETAPA_BARRIDO
 } auto_etapa_t;
 
 typedef struct {
-    const char *direccion;   // "FWD", "BACK", "TURN_L", "TURN_R" o "STOP" 
+    const char *direccion;   // "FWD", "BACK", "TURN_L", "TURN_R" o "STOP"
     int velocidad;           // 0-1000
-    bool aspirar;            // true durante el barrido (esta parte todavía no está atada)
+    bool aspirar;            // true durante el barrido
 } auto_orden_t;
+
+// Lecturas de los ultrasonicos. *_ok = la lectura es valida (false = sin eco, nada en rango)
+typedef struct {
+    float frontal_cm;
+    bool frontal_ok;
+    float trasero_cm;
+    bool trasero_ok;
+} auto_sensores_t;
 
 typedef struct {
     auto_fase_t fase;
     auto_fase_t fase_siguiente;      //a donde ir al terminar PARAR
     auto_etapa_t etapa;
-    int lado;                        // +1 = izquierda, -1 = derecha, para saber hacia donde girar
-    int giro_n;                      // 1 o 2 dentro del patron
-    bool patron_completo;            // false: giro simple (en la esquina)
+    int giro_n;                      // 1 = hacia el lateral (luego MOVER), 2 = hacia la fila (luego AVANZAR)
+    int sentido;                     // 0 = fila a rumbo_fila, 1 = fila de vuelta (rumbo_fila + 180)
+    double rumbo_fila_rad;           // referencia de todas las filas
+    double rumbo_objetivo_rad;       // a donde apunta el giro en curso (absoluto)
+    int giro_dir;                    // +1 = TURN_L, -1 = TURN_R
+    bool giro_fino;                  // ya esta cerca: gira a AUTO_VEL_GIRO_FINO
+    bool corrigiendo;                // giro para corregir el rumbo a mitad de fila
+    uint64_t inicio_ns;              // arranque del recorrido (para el tiempo total)
     uint64_t inicio_fase_ns;
-    double x_inicio_mm;              // inicio de la fila del "movimiento lateral"
+    double x_inicio_mm;              // inicio de la fila o del movimiento lateral
     double y_inicio_mm;
     double theta_anterior_rad;
-    double giro_acumulado_rad;
-    double giro_objetivo_rad;        // tiene signo para saber hacia donde es el giro
-    bool reanudar_giro;              // al volver a GIRAR tras un atasco, conservar lo girado
+    double giro_acumulado_rad;       // cuanto lleva girado (para detectar atasco)
     int atascos;                     // atascos seguidos sin completar una maniobra
     uint64_t atasco_ref_ns;          // punto de referencia de la ventana de atasco
     double atasco_ref_x_mm;
     double atasco_ref_y_mm;
     double atasco_ref_giro_rad;
+    const char *motivo_fin;          // el porqué termino (para log y pruebas)
 } auto_t;
 
 void auto_init(auto_t *auto_estado);
@@ -103,12 +133,11 @@ void auto_reset(auto_t *auto_estado);
 bool auto_fin(const auto_t *auto_estado);
 
 // Cada paso de la maquina de estados (tick de control)
-// frontal_ok = la lectura es valida (false = sin eco = nada en rango, 
 // Devuelve la orden que debe estar aplicada
 auto_orden_t auto_paso(auto_t *auto_estado,
-                               const odometria_pose_t *pose,
-                               float frontal_cm, bool frontal_ok,
-                               uint64_t ahora_ns);
+                       const odometria_pose_t *pose,
+                       const auto_sensores_t *sensores,
+                       uint64_t ahora_ns);
 
 #ifdef __cplusplus
 }
