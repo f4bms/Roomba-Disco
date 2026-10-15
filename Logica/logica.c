@@ -265,7 +265,7 @@ static void control_tick(cJSON *state, odometria_t *odometria, mapa_t *mapa,
                 obstacle_was_active[sensor] = active;
                 any_active = any_active || active;
                 trigger_alert = trigger_alert || nuevo;
-                // En AUTO solo frena lo que tiene enfrente; el trasero lo vigila auto.c al retroceder
+                // En AUTO solo frena lo que tiene enfrente; el trasero ve la pared al iniciar cada fila
                 if (nuevo && sensor == SENSOR_FRONTAL) trigger_stop = true;
             }
             led_set(LED_ALERTA, any_active);
@@ -311,17 +311,12 @@ static void control_tick(cJSON *state, odometria_t *odometria, mapa_t *mapa,
             auto_reset(auto_estado);
             *auto_activo = true;
         }
-		//para el auto paso recibe las lecturas de los dos sensores
-        {
-            const auto_sensores_t lecturas = {
-                distances[SENSOR_FRONTAL], sensor_valid[SENSOR_FRONTAL],
-                distances[SENSOR_TRASERO], sensor_valid[SENSOR_TRASERO],
-            };
-            orden = auto_paso(auto_estado, pose, &lecturas, monotonic_now_ns());
-        }
+		//para el auto paso recibe la lectura del sensor frontal
+        orden = auto_paso(auto_estado, pose,
+                          distances[SENSOR_FRONTAL], sensor_valid[SENSOR_FRONTAL],
+                          monotonic_now_ns());
         if (auto_fin(auto_estado)) {
             // TErmina el recorrido, entonces frena y devuelve el control al modo manual.
-            printf("AUTO terminado: %s\n", auto_estado->motivo_fin);
             finish_auto(state);
             *auto_activo = false;
         } else if (roombateca_set_motion(orden.direccion, orden.velocidad) == 0) {
