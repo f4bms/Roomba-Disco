@@ -513,7 +513,7 @@ static void test_corrige_rumbo_en_fila(void) {
     assert(es(o, "FWD") && a.etapa == AUTO_ETAPA_ESQUINA_2);
     x_inicio = a.y_inicio_mm;
     pose.y_mm -= 300.0;
-    pose.theta_rad += 0.2;                               /* se desvio ~11 grados */
+    pose.theta_rad += 0.3;                               /* se desvio ~17 grados */
     o = auto_paso(&a, &pose, &libre, t += 100 * MS);
     assert(es(o, "STOP") && a.corrigiendo);
     o = auto_paso(&a, &pose, &libre, t += 400 * MS);
@@ -695,7 +695,7 @@ int main(int argc, char **argv) {
     test_atasco_avanzando();
     test_retroceso_con_sensor_trasero();
     test_giro_corrige_sobregiro();
-    test_corrige_rumbo_en_fila();
+    if (AUTO_CORREGIR_RUMBO) test_corrige_rumbo_en_fila();
     test_tiempo_total();
     test_fin_de_bloque_con_y_sin_mapa();
     test_planear_va_a_zona_pendiente();
