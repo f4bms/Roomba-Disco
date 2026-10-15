@@ -5,7 +5,7 @@
 extern "C" {
 #endif
 
-#define SUCCION_POTENCIA_MAX 100
+#define SUCCION_POTENCIA_MAX 
 
 /* Configura el pin del motor de succión y arranca el PWM con el motor
  * apagado. Devuelve 0 o -errno. */

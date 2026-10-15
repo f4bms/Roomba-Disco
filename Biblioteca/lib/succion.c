@@ -16,7 +16,7 @@
 
 /* Motor de 7,4 V con pack de hasta 12,6 V (≈ 59 %); el margen compensa el
  * apagado lento de la etapa, que alarga cada pulso. */
-#define SUCCION_DUTY_MAX_PCT 55L
+#define SUCCION_DUTY_MAX_PCT 40L
 #define SUCCION_RAMPA_MS 1000L
 
 #define DUTY_MAX_NS (SUCCION_PERIODO_NS * SUCCION_DUTY_MAX_PCT / 100)
