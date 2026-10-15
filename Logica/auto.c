@@ -426,7 +426,7 @@ auto_orden_t auto_paso(auto_t *a, const odometria_pose_t *pose,
             fin_de_fila(a, pose, ahora_ns, true);  // choco con algo que el sensor no vio 
         } else if (transcurrido >= AUTO_TIMEOUT_AVANZAR_NS) {
             ir_a_fin(a, "sin pared en 30 s", pose, ahora_ns);  // falla del sensor
-        } else if (a->etapa != AUTO_ETAPA_ESQUINA_1
+        } else if (AUTO_CORREGIR_RUMBO && a->etapa != AUTO_ETAPA_ESQUINA_1
                    && fabs(normalizar(rumbo_de_fila(a) - pose->theta_rad))
                       > AUTO_RUMBO_MAX_RAD) {
             a->corrigiendo = true;             //se desvia: corrige y sigue la fila 

@@ -54,7 +54,11 @@ extern "C" {
 #define AUTO_GIRO_FINO_RAD  0.35  // Cuando faltan menos de 20° baja la velocidad para mejorar precisión
 /* CALIBRAR: parar el giro antes de llegar, para compensar la inercia. . Hoy los giros quedan cerca de 90, por eso 0. */
 #define AUTO_GIRO_ANTICIPO_RAD 0.0 // ~CALIBRAR~ para compensar inercia, Si los giros se PASAN de 90°, SUBIR (ej. 0.05 = ~3°). Si se quedan cortos, BAJAR (minimo 0)
-#define AUTO_RUMBO_MAX_RAD  0.09  // ~CALIBRAR~ desvio maximo del rumbo durante una fila antes de parar y corregirlo (~5°). Si corrige demasiado seguido, SUBIR.
+/* Con 1 corrige el rumbo a mitad de fila; con 0 solo lo corrigen sync_wheels y los giros a
+ * rumbo absoluto. Sin IMU el rumbo sale de los encoders (~1.3° por pulso) y la correccion
+ * frenaba el robot por ruido. */
+#define AUTO_CORREGIR_RUMBO 0
+#define AUTO_RUMBO_MAX_RAD  0.20  // ~CALIBRAR~ desvio maximo del rumbo durante una fila antes de parar y corregirlo (~11°, unos 9 pulsos de diferencia entre ruedas). Si corrige demasiado seguido, SUBIR.
 
 /* ------------------------------------------------------------------------
  * Navegacion con el mapa (mapa.c). Si logica.c le pasa el mapa con

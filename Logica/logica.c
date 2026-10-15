@@ -41,7 +41,7 @@ struct control_context {
     cJSON *state;
     odometria_t odometria;
     mapa_t mapa;
-    bool obstacle_was_active;
+    bool obstacle_was_active[SENSOR_CANTIDAD];
     auto_t auto_estado;
     bool auto_activo;
 };
@@ -197,8 +197,7 @@ static void update_reported_map(cJSON *reported, const mapa_t *mapa) {
     }
 }
 
-static bool obstacle_detected(const float distances[SENSOR_CANTIDAD],
-                              const bool valid[SENSOR_CANTIDAD]);
+static bool obstacle_detected(float distance, bool valid);
 
 static void sync_reported_audio(cJSON *reported) {
     cJSON *audio = cJSON_GetObjectItemCaseSensitive(reported, "audio");
@@ -242,7 +241,7 @@ static void finish_auto(cJSON *state) {
 }
 //se le agrega al control del tick la parte del manejo en automático
 static void control_tick(cJSON *state, odometria_t *odometria, mapa_t *mapa,
-                         bool *obstacle_was_active,
+                         bool obstacle_was_active[SENSOR_CANTIDAD],
                          auto_t *auto_estado, bool *auto_activo) { //acá
     float distances[SENSOR_CANTIDAD];
     bool sensor_valid[SENSOR_CANTIDAD];
@@ -256,13 +255,23 @@ static void control_tick(cJSON *state, odometria_t *odometria, mapa_t *mapa,
             || roombateca_read_encoders(encoder_readings) != 0) return;
 
         {
-            bool obstacle_active = obstacle_detected(distances, sensor_valid);
-            bool trigger_alert = obstacle_active && !*obstacle_was_active;
-            *obstacle_was_active = obstacle_active;
-            led_set(LED_ALERTA, obstacle_active);
+            bool any_active = false;
+            bool trigger_alert = false;
+            bool trigger_stop = false;
+
+            for (sensor = 0; sensor < SENSOR_CANTIDAD; ++sensor) {
+                bool active = obstacle_detected(distances[sensor], sensor_valid[sensor]);
+                bool nuevo = active && !obstacle_was_active[sensor];
+                obstacle_was_active[sensor] = active;
+                any_active = any_active || active;
+                trigger_alert = trigger_alert || nuevo;
+                // En AUTO solo frena lo que tiene enfrente; el trasero lo vigila auto.c al retroceder
+                if (nuevo && sensor == SENSOR_FRONTAL) trigger_stop = true;
+            }
+            led_set(LED_ALERTA, any_active);
             if (trigger_alert) {
                 //para el mutex de alerta obstáculo
-                if (state_is_auto(state)) roombateca_set_motion("STOP", 0);
+                if (trigger_stop && state_is_auto(state)) roombateca_set_motion("STOP", 0);
                 pthread_mutex_unlock(&state_mutex);
                 roombateca_audio_obstacle_alert();
                 pthread_mutex_lock(&state_mutex);
@@ -345,14 +354,8 @@ static void control_tick(cJSON *state, odometria_t *odometria, mapa_t *mapa,
     update_reported_map(reported, mapa);
 }
 
-static bool obstacle_detected(const float distances[SENSOR_CANTIDAD],
-                              const bool valid[SENSOR_CANTIDAD]) {
-    int sensor;
-
-    for (sensor = 0; sensor < SENSOR_CANTIDAD; ++sensor) {
-        if (valid[sensor] && distances[sensor] < 20.0f) return true;
-    }
-    return false;
+static bool obstacle_detected(float distance, bool valid) {
+    return valid && distance < 20.0f;
 }
 
 static void *control_thread_main(void *argument) {
@@ -374,7 +377,7 @@ static void *control_thread_main(void *argument) {
                 watchdog_stopped = true;
             }
             control_tick(context->state, &context->odometria, &context->mapa,
-                         &context->obstacle_was_active,
+                         context->obstacle_was_active,
                          &context->auto_estado, &context->auto_activo);
             sync_reported_indicators(context->state);
             char *after = cJSON_PrintUnformatted(context->state);
