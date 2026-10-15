@@ -96,13 +96,14 @@ int mapa_actualizar_pose(mapa_t *mapa, const odometria_pose_t *pose) {
     if (mundo_a_celda_sin_limite(mapa, pose->x_mm, pose->y_mm, &x, &y) != 0) return -EINVAL;
     if (mapa_expandir(mapa, x, y) != 0) return -ERANGE;
     if (mundo_a_celda(mapa, pose->x_mm, pose->y_mm, &x, &y) != 0) return -ERANGE;
-    if (*celda(mapa, x, y) != MAPA_OBSTACULO && *celda(mapa, x, y) != MAPA_ASPIRADA) {
-        *celda(mapa, x, y) = MAPA_VISITADA;
-    }
+    // Como el centro del robot esta en el lugar en donde habia un obstaculo marcado por
+    // el cono del sensor, es un falso positivo y se borra el obstáculo
+    if (*celda(mapa, x, y) != MAPA_ASPIRADA) *celda(mapa, x, y) = MAPA_VISITADA;
     return 0;
 }
 
 int mapa_observar(mapa_t *mapa, const odometria_pose_t *pose, double angulo_sensor_rad, double distancia_mm, int obstaculo) {
+    double angulo_rad;
     double step_mm;
     double x_mm;
     double y_mm;
@@ -112,19 +113,39 @@ int mapa_observar(mapa_t *mapa, const odometria_pose_t *pose, double angulo_sens
     int y;
 
     if (mapa == NULL || pose == NULL || distancia_mm < 0.0) return -EINVAL;
+    angulo_rad = pose->theta_rad + angulo_sensor_rad;   // direccion del rayo en el mapa
     step_mm = mapa->config.resolution_mm / 2.0;
-    for (double traveled = 0.0; traveled <= distancia_mm; traveled += step_mm) {
-        x_mm = pose->x_mm + traveled * cos(pose->theta_rad + angulo_sensor_rad);
-        y_mm = pose->y_mm + traveled * sin(pose->theta_rad + angulo_sensor_rad);
+    /* Para mapear las celdas libres usa el sensor desde el robot hasta 100 mm antes del eco. 
+     * Donde rebota el eco hay algo, asi que la ultima celda antes del eco no se marca libre aunque
+     * este lejos; la franja pegada a la pared se queda como desconocida. Cualquier rayo que sale
+     * de la grilla se corta ahi */
+    for (double traveled = 0.0; traveled < distancia_mm - mapa->config.resolution_mm;
+            traveled += step_mm) {
+        x_mm = pose->x_mm + traveled * cos(angulo_rad);
+        y_mm = pose->y_mm + traveled * sin(angulo_rad);
         if (mundo_a_celda(mapa, x_mm, y_mm, &x, &y) != 0) break;
         if (x == previous_x && y == previous_y) continue;
         previous_x = x;
         previous_y = y;
-        if (traveled < distancia_mm - mapa->config.resolution_mm) {
-            if (*celda(mapa, x, y) == MAPA_DESCONOCIDA) {
-                *celda(mapa, x, y) = MAPA_LIBRE_OBSERVADA;
-            }
-        } else if (obstaculo && traveled >= distancia_mm) {
+        if (*celda(mapa, x, y) == MAPA_DESCONOCIDA) {
+            *celda(mapa, x, y) = MAPA_LIBRE_OBSERVADA;
+        }
+    }
+    /* Para mapear los obstáculos toma la celda exacta donde rebota el eco. Antes se buscaba dentro del
+     * ciclo con pasos de 50 mm exactos o múltiplos exactos(por lo que tenía que agarrar la lectura exacta en ese momento)
+     * Si el obstaculo cae fuera de la grilla se agranda el mapa para que se pinte (igual que con la pose).
+     * El sensor tiene un cono de ~15 grados: un eco de costado (por ejemplo la
+     * pared vista en diagonal al girar) se marca recto adelante, mas cerca de lo real, sobre piso libre
+     * Por esta razón la prioridad es "lo que el robot pisa es piso" y no se marca obstaculo donde ya pasó
+     * también por eso si el centro del robot pasa despues por encima lo cambia (ver mapa_actualizar_pose) */
+    if (obstaculo) {
+        x_mm = pose->x_mm + distancia_mm * cos(angulo_rad);
+        y_mm = pose->y_mm + distancia_mm * sin(angulo_rad);
+        if (mundo_a_celda_sin_limite(mapa, x_mm, y_mm, &x, &y) == 0
+                && mapa_expandir(mapa, x, y) == 0
+                && mundo_a_celda(mapa, x_mm, y_mm, &x, &y) == 0
+                && *celda(mapa, x, y) != MAPA_VISITADA
+                && *celda(mapa, x, y) != MAPA_ASPIRADA) {
             *celda(mapa, x, y) = MAPA_OBSTACULO;
         }
     }

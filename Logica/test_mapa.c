@@ -88,5 +88,50 @@ int main(void) {
         }
         mapa_cleanup(&m);
     }
+
+    /* Regresion: el obstaculo se marca con lecturas que no son multiplo de 50 mm
+     * (antes solo se pintaba si la distancia caia justo en un paso del ciclo) */
+    {
+        mapa_t m = {0};
+        odometria_pose_t p = {0.0, 0.0, 0.0};
+        assert(mapa_init(&m, config) == 0);
+        assert(mapa_observar(&m, &p, 0.0, 273.0, 1) == 0);    /* 12.3 cm + radio */
+        assert(cell(&m, 6, 3) == MAPA_OBSTACULO);             /* x = 273 mm -> celda 6 */
+        assert(cell(&m, 5, 3) == MAPA_LIBRE_OBSERVADA);
+        mapa_cleanup(&m);
+    }
+
+    /* Regresion: un obstaculo fuera de la grilla la agranda para poder pintarse
+     * (robot cerca del borde de lo explorado mirando hacia afuera) */
+    {
+        mapa_t m = {0};
+        odometria_pose_t p = {350.0, 0.0, 0.0};
+        assert(mapa_init(&m, config) == 0);
+        assert(mapa_actualizar_pose(&m, &p) == 0);
+        assert(mapa_observar(&m, &p, 0.0, 300.0, 1) == 0);    /* obstaculo en x = 650 mm */
+        assert(m.config.width == 11);
+        assert(cell(&m, 10, 3) == MAPA_OBSTACULO);
+        /* sin obstaculo, una lectura lejana no agranda el mapa */
+        assert(mapa_observar(&m, &p, 0.0, 3000.0, 0) == 0);
+        assert(m.config.width == 11);
+        mapa_cleanup(&m);
+    }
+
+    /* Lo que el robot pisa es piso: no se marca obstaculo donde ya paso, y si el
+     * centro pasa por un obstaculo marcado (falso positivo del cono) se borra */
+    {
+        mapa_t m = {0};
+        odometria_pose_t p = {0.0, 0.0, 0.0};
+        odometria_pose_t encima = {250.0, 50.0, 0.0};
+        assert(mapa_init(&m, config) == 0);
+        assert(mapa_actualizar_pose(&m, &encima) == 0);          /* celda 6,3 visitada */
+        assert(mapa_observar(&m, &p, 0.0, 273.0, 1) == 0);
+        assert(cell(&m, 6, 3) == MAPA_VISITADA);
+        assert(mapa_marcar_obstaculo(&m, 150.0, 50.0) == 0);   /* celda 5,3 */
+        encima.x_mm = 150.0;
+        assert(mapa_actualizar_pose(&m, &encima) == 0);
+        assert(cell(&m, 5, 3) == MAPA_VISITADA);
+        mapa_cleanup(&m);
+    }
     return 0;
 }
